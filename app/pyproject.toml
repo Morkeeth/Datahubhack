@@ -1,0 +1,33 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "join-treaty"
+version = "0.1.0"
+description = "Mine repeated equality joins from DataHub query history and persist them as native ER model relationships."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "Apache-2.0" }
+dependencies = [
+  "acryl-datahub>=1.0.0",
+  "sqlglot>=25.0.0",
+  "fastapi>=0.110.0",
+  "uvicorn>=0.29.0",
+  "pydantic>=2.0.0",
+  "typer>=0.12.0",
+  "rich>=13.0.0",
+]
+
+[project.scripts]
+join-treaty = "join_treaty.__main__:app"
+
+[project.optional-dependencies]
+test = ["pytest>=8.0.0"]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["join_treaty*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

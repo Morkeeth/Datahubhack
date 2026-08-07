@@ -31,6 +31,11 @@ if [[ -f "$ROOT/requirements.txt" ]]; then
   "$PY" -m pip install --user -r "$ROOT/requirements.txt"
 fi
 
+if [[ -f "$ROOT/app/pyproject.toml" ]]; then
+  echo "==> Join Treaty app (editable)"
+  "$PY" -m pip install --user -e "$ROOT/app"
+fi
+
 echo "==> Warm npm cache for DataHub MCP server"
 npx --yes @acryldata/mcp-server-datahub --help >/dev/null 2>&1 || true
 
