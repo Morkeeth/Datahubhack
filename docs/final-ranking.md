@@ -1,6 +1,7 @@
 # Final concept ranking
 
-Date: 2026-08-07  
+Date: 2026-08-07
+
 Decision: **Join Treaty wins; Second Pair is the fallback. Ideation is closed.**
 
 ## Inputs
