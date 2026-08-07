@@ -4,13 +4,16 @@
 
 Ship a working DataHub-powered agent for **Build with DataHub: The Agent Hackathon** (deadline Mon 10 Aug 2026, 5pm EDT).
 
-Until a concept is locked, work the **concept forge** only. Do not start `app/` implementation before `docs/build-brief.md` is filled from a playbook ruling.
+The concept forge is closed. **Join Treaty** is locked in
+`docs/build-brief.md`; implement only that scoped MVP. Do not reopen ideation or
+add broad Nullspace/lineage-repair features.
 
 ## Repo map
 
 | Path | Purpose |
 | --- | --- |
 | `docs/playbook.md` | Scoring rules for concepts |
+| `docs/final-ranking.md` | Final ruling and competitive analysis |
 | `docs/build-brief.md` | Locked winner + ship scope |
 | `concepts/{grok,gpt,third}/` | Independent concept sets |
 | `scripts/setup-datahub.sh` | Local DataHub Docker + sample data |
@@ -54,9 +57,10 @@ npx -y @acryldata/mcp-server-datahub
 - Ports forwarded: `9002` (UI), `8080` (GMS), `3000` (app).
 - Prefer committing on branch `cursor/<name>-4c9d` and opening a PR against `main`.
 
-## Concept forge workflow
+## Locked build workflow
 
-1. Author concepts only in your assigned folder under `concepts/`.
-2. Match the template in `docs/playbook.md`.
-3. After all three sets exist, produce a cross-cut ruling and fill `docs/build-brief.md`.
-4. Then scaffold the app and keep the README demo path sacred.
+1. Treat `docs/build-brief.md` as the scope contract.
+2. Build the five must-have capabilities before any nice-to-have.
+3. Keep verdicts deterministic and require positive evidence; abstain on gaps.
+4. Persist native DataHub metadata and prove it via read-after-write.
+5. Keep the README-to-demo path under three minutes.

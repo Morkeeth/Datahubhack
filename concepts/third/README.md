@@ -1,6 +1,6 @@
-# Concept set — Third prior
+# Concept set — Competitive whitespace
 
 Independent concepts for the DataHub Agent Hackathon.
 Do not edit other model folders. Follow `docs/playbook.md`.
 
-Status: awaiting concepts (populate as `01-*.md`, `02-*.md`, …).
+Status: final round complete — see [`final-round.md`](final-round.md).

@@ -1,4 +1,4 @@
-# DataHub Agent Hackathon — Concept Forge
+# Join Treaty — DataHub Agent Hackathon
 
 Parallel multi-model ideation for **Build with DataHub: The Agent Hackathon** (deadline Mon 10 Aug 2026, 5pm EDT).
 
@@ -6,7 +6,14 @@ Public repo · Apache-2.0 · local DataHub Docker for judge demos.
 
 ## Purpose
 
-Collect independent concept sets from Grok, GPT, and a third prior, then cross-cut against the [playbook](docs/playbook.md) for one ruling. The locked winner lands in [docs/build-brief.md](docs/build-brief.md) before any app build.
+The concept forge is complete. **Join Treaty** is the locked winner:
+
+> Mine the equality joins teams repeat in DataHub's query history, verify each
+> one against schema and column profiles, and write it back as a native ER model
+> relationship — the join graph that lineage never captures.
+
+Read the [final ranking](docs/final-ranking.md) and locked
+[build brief](docs/build-brief.md).
 
 ## Quick setup
 
@@ -31,9 +38,11 @@ bash scripts/check-datahub.sh
 | --- | --- |
 | [concepts/grok](concepts/grok) | Grok concepts |
 | [concepts/gpt](concepts/gpt) | GPT concepts |
-| [concepts/third](concepts/third) | Third prior |
+| [concepts/third](concepts/third) | Competitive-whitespace pass |
 
-Rules and scoring: [docs/playbook.md](docs/playbook.md). Agent instructions: [AGENTS.md](AGENTS.md).
+Rules and scoring: [docs/playbook.md](docs/playbook.md). Final ruling:
+[docs/final-ranking.md](docs/final-ranking.md). Agent instructions:
+[AGENTS.md](AGENTS.md).
 
 ## Constraints (hard)
 
@@ -48,7 +57,7 @@ Rules and scoring: [docs/playbook.md](docs/playbook.md). Agent instructions: [AG
 
 ## Status
 
-Concept forge scaffolding ready. Winning concept and build brief land after ruling.
+**Ideation closed. Join Treaty locked; implementation is next.**
 
 ## License
 
