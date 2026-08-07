@@ -68,12 +68,16 @@ RUN id -u ubuntu >/dev/null 2>&1 || useradd -m -s /bin/bash ubuntu \
     && echo "ubuntu ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/ubuntu \
     && chmod 0440 /etc/sudoers.d/ubuntu
 
-# Configure docker storage for nested containers when possible
+# Configure docker storage for nested containers when possible.
+# Docker 29 enables the containerd snapshotter by default, which ignores the
+# fuse-overlayfs storage-driver. Nested Docker in the Firecracker VM needs
+# fuse-overlayfs, so explicitly disable the containerd snapshotter.
 RUN mkdir -p /etc/docker \
     && printf '%s\n' \
       '{' \
       '  "storage-driver": "fuse-overlayfs",' \
-      '  "iptables": true' \
+      '  "iptables": true,' \
+      '  "features": { "containerd-snapshotter": false }' \
       '}' > /etc/docker/daemon.json || true
 
 USER ubuntu
