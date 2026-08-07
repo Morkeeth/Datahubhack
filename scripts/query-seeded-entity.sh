@@ -3,34 +3,20 @@
 set -euo pipefail
 
 GMS_URL="${DATAHUB_GMS_URL:-http://localhost:8080}"
+DATASET_URN="${DATASET_URN:-urn:li:dataset:(urn:li:dataPlatform:postgres,local-warehouse.warehouse.ecommerce.customers,DEV)}"
 
 read -r -d '' QUERY <<'GRAPHQL' || true
-query SeededWarehouseEntity {
-  search(
-    input: {
-      type: DATASET
-      query: "customers"
-      start: 0
-      count: 10
-      filters: [
-        {
-          field: "platform"
-          values: ["urn:li:dataPlatform:postgres"]
-          condition: EQUAL
-        }
-      ]
+query SeededWarehouseEntity($urn: String!) {
+  dataset(urn: $urn) {
+    urn
+    name
+    platform {
+      name
     }
-  ) {
-    total
-    searchResults {
-      entity {
-        urn
-        ... on Dataset {
-          name
-          platform {
-            name
-          }
-        }
+    schemaMetadata {
+      fields {
+        fieldPath
+        nativeDataType
       }
     }
   }
@@ -38,11 +24,18 @@ query SeededWarehouseEntity {
 GRAPHQL
 
 payload="$(
-  QUERY="$QUERY" python3 - <<'PY'
+  QUERY="$QUERY" DATASET_URN="$DATASET_URN" python3 - <<'PY'
 import json
 import os
 
-print(json.dumps({"query": os.environ["QUERY"]}))
+print(
+    json.dumps(
+        {
+            "query": os.environ["QUERY"],
+            "variables": {"urn": os.environ["DATASET_URN"]},
+        }
+    )
+)
 PY
 )"
 

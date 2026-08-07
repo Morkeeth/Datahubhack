@@ -39,7 +39,8 @@ durable seed:
 
 ```bash
 docker compose exec warehouse psql -U agent -d warehouse -c \
-  "begin; insert into ecommerce.customers values
+  "begin; insert into ecommerce.customers
+   (customer_id, email, country_code) values
    (999, 'agent@example.com', 'US'); select email from
    ecommerce.customers where customer_id = 999; rollback;"
 ```
@@ -50,32 +51,17 @@ docker compose exec warehouse psql -U agent -d warehouse -c \
 `POST /api/graphql`:
 
 ```graphql
-query SeededWarehouseEntity {
-  search(
-    input: {
-      type: DATASET
-      query: "customers"
-      start: 0
-      count: 10
-      filters: [
-        {
-          field: "platform"
-          values: ["urn:li:dataPlatform:postgres"]
-          condition: EQUAL
-        }
-      ]
+query SeededWarehouseEntity($urn: String!) {
+  dataset(urn: $urn) {
+    urn
+    name
+    platform {
+      name
     }
-  ) {
-    total
-    searchResults {
-      entity {
-        urn
-        ... on Dataset {
-          name
-          platform {
-            name
-          }
-        }
+    schemaMetadata {
+      fields {
+        fieldPath
+        nativeDataType
       }
     }
   }

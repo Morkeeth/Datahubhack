@@ -3,6 +3,30 @@ name: datahub-hack
 # A self-contained local substrate: DataHub OSS, a writable warehouse, and
 # metadata ingestion. From a clean clone, `docker compose up` is the only
 # command required.
+x-datahub-storage: &datahub-storage
+  DATAHUB_BASE_PATH: /
+  DATAHUB_GMS_BASE_PATH: /
+  DATAHUB_GMS_HOST: datahub-gms
+  DATAHUB_GMS_PORT: "8080"
+  DATAHUB_TOKEN_SERVICE_SALT: 2b15f8d745c04853904f0f3312e5f1ab
+  DATAHUB_TOKEN_SERVICE_SIGNING_KEY: 8f041cebbb464f5da3a33c9a72f32826601519f588ca413ab82b2261d1e93628
+  EBEAN_DATASOURCE_DRIVER: com.mysql.jdbc.Driver
+  EBEAN_DATASOURCE_HOST: mysql:3306
+  EBEAN_DATASOURCE_PASSWORD: datahub
+  EBEAN_DATASOURCE_URL: jdbc:mysql://mysql:3306/datahub?verifyServerCertificate=false&useSSL=true&useUnicode=yes&characterEncoding=UTF-8&enabledTLSProtocols=TLSv1.2
+  EBEAN_DATASOURCE_USERNAME: root
+  ELASTICSEARCH_HOST: search
+  ELASTICSEARCH_IMPLEMENTATION: opensearch
+  ELASTICSEARCH_PORT: "9200"
+  ELASTICSEARCH_PROTOCOL: http
+  ELASTICSEARCH_USE_SSL: "false"
+  ENTITY_REGISTRY_CONFIG_PATH: /datahub/datahub-gms/resources/entity-registry.yml
+  ENTITY_VERSIONING_ENABLED: "true"
+  GRAPH_SERVICE_IMPL: elasticsearch
+  KAFKA_BOOTSTRAP_SERVER: broker:29092
+  KAFKA_SCHEMAREGISTRY_URL: http://datahub-gms:8080/schema-registry/api/
+  SCHEMA_REGISTRY_TYPE: INTERNAL
+
 services:
   kafka-broker:
     image: confluentinc/cp-kafka:8.2.2
@@ -97,39 +121,18 @@ services:
         condition: service_healthy
       opensearch:
         condition: service_healthy
-    environment: &datahub-storage
+    environment:
+      <<: *datahub-storage
       BACKFILL_BROWSE_PATHS_V2: "true"
       CREATE_USER: "false"
       CREATE_USER_PASSWORD: datahub
       CREATE_USER_USERNAME: datahub
-      DATAHUB_BASE_PATH: /
-      DATAHUB_GMS_BASE_PATH: /
-      DATAHUB_GMS_HOST: datahub-gms
-      DATAHUB_GMS_PORT: "8080"
       DATAHUB_PRECREATE_TOPICS: "true"
       DATAHUB_SQL_SETUP_ENABLED: "true"
-      DATAHUB_TOKEN_SERVICE_SALT: 2b15f8d745c04853904f0f3312e5f1ab
-      DATAHUB_TOKEN_SERVICE_SIGNING_KEY: 8f041cebbb464f5da3a33c9a72f32826601519f588ca413ab82b2261d1e93628
-      EBEAN_DATASOURCE_DRIVER: com.mysql.jdbc.Driver
-      EBEAN_DATASOURCE_HOST: mysql:3306
-      EBEAN_DATASOURCE_PASSWORD: datahub
-      EBEAN_DATASOURCE_URL: jdbc:mysql://mysql:3306/datahub?verifyServerCertificate=false&useSSL=true&useUnicode=yes&characterEncoding=UTF-8&enabledTLSProtocols=TLSv1.2
-      EBEAN_DATASOURCE_USERNAME: root
-      ELASTICSEARCH_HOST: search
-      ELASTICSEARCH_IMPLEMENTATION: opensearch
       ELASTICSEARCH_INDEX_BUILDER_MAPPINGS_REINDEX: "true"
       ELASTICSEARCH_INDEX_BUILDER_REFRESH_INTERVAL_SECONDS: "3"
       ELASTICSEARCH_INDEX_BUILDER_SETTINGS_REINDEX: "true"
-      ELASTICSEARCH_PORT: "9200"
-      ELASTICSEARCH_PROTOCOL: http
-      ELASTICSEARCH_USE_SSL: "false"
-      ENTITY_REGISTRY_CONFIG_PATH: /datahub/datahub-gms/resources/entity-registry.yml
-      ENTITY_VERSIONING_ENABLED: "true"
-      GRAPH_SERVICE_IMPL: elasticsearch
-      KAFKA_BOOTSTRAP_SERVER: broker:29092
-      KAFKA_SCHEMAREGISTRY_URL: http://datahub-gms:8080/schema-registry/api/
       PARTITIONS: "3"
-      SCHEMA_REGISTRY_TYPE: INTERNAL
       SCHEMA_REGISTRY_SYSTEM_UPDATE: "true"
       SPRING_KAFKA_PROPERTIES_AUTO_REGISTER_SCHEMAS: "true"
       SPRING_KAFKA_PROPERTIES_USE_LATEST_VERSION: "true"
