@@ -16,7 +16,10 @@ add broad Nullspace/lineage-repair features.
 | `docs/final-ranking.md` | Final ruling and competitive analysis |
 | `docs/build-brief.md` | Locked winner + ship scope |
 | `concepts/{grok,gpt,third}/` | Independent concept sets |
-| `scripts/setup-datahub.sh` | Local DataHub Docker + sample data |
+| `compose.yaml` | One-command DataHub + seeded warehouse substrate |
+| `infra/warehouse/init.sql` | Real writable warehouse seed |
+| `infra/datahub/postgres.yml` | Warehouse-to-DataHub ingestion recipe |
+| `scripts/setup-datahub.sh` | Detached wrapper around Compose startup |
 | `scripts/install-deps.sh` | Cloud/local Python + MCP warm install |
 | `examples/` | Offline artifacts for judges |
 | `LICENSE` | Apache-2.0 (required) |
@@ -30,11 +33,10 @@ add broad Nullspace/lineage-repair features.
 
 ## Local DataHub
 
-```bash
-bash scripts/install-deps.sh
-bash scripts/setup-datahub.sh
-bash scripts/check-datahub.sh
-```
+Run `docker compose up` from a clean clone. It starts DataHub, a writable
+Postgres warehouse, and a one-shot metadata ingestion job. Use
+`bash scripts/check-datahub.sh` for the end-to-end check and
+`bash scripts/query-seeded-entity.sh` for the live GraphQL proof.
 
 UI: http://localhost:9002 (`datahub` / `datahub`)
 GMS: http://localhost:8080
@@ -51,8 +53,8 @@ npx -y @acryldata/mcp-server-datahub
 
 - Environment is defined in `.cursor/environment.json` (Dockerfile + install/start).
 - `install` runs `scripts/install-deps.sh` during Builds.
-- `start` brings up the Docker daemon; it does **not** auto-launch full DataHub quickstart (too heavy for every boot).
-- When a task needs a live catalog, run `bash scripts/setup-datahub.sh` once, then verify with `bash scripts/check-datahub.sh`.
+- `start` brings up the Docker daemon; it does **not** auto-launch the repository Compose stack (too heavy for every boot).
+- When a task needs a live catalog, run `docker compose up -d`, wait for `metadata-ingestion` to exit `0`, then verify with `bash scripts/check-datahub.sh`.
 - Secrets: put `DATAHUB_GMS_TOKEN` (and optional OpenAI/Anthropic keys) in the Cloud Agents Secrets tab — never commit tokens.
 - Ports forwarded: `9002` (UI), `8080` (GMS), `3000` (app).
 - Prefer committing on branch `cursor/<name>-4c9d` and opening a PR against `main`.
@@ -60,8 +62,9 @@ npx -y @acryldata/mcp-server-datahub
 ### Verified setup notes (non-obvious)
 
 - Nested Docker needs `fuse-overlayfs`. Docker 29 defaults to the containerd snapshotter, which ignores the `fuse-overlayfs` storage-driver, so `.cursor/Dockerfile` sets `features.containerd-snapshotter: false` in `daemon.json`. Keep that or quickstart can fail to start containers in the VM.
-- Sample data: the pinned CLI (`acryl-datahub 1.6.0.6`) has no working `datahub datapack load showcase-ecommerce` (missing bundled resource), so `scripts/setup-datahub.sh` logs a graceful failure for that step. To load a live catalog for demos, run `datahub docker ingest-sample-data` after quickstart — it seeds ~7 sample datasets.
-- Quickstart pulls DataHub `v1.7.0` images (~a few minutes on first boot) and runs 6 containers (gms, frontend, mysql, kafka-broker, opensearch, actions). Wait for `datahub-datahub-gms-quickstart-1` to be `healthy` before querying.
+- The repository Compose stack pins DataHub `v1.7.0` and Postgres `16.4`. The `metadata-ingestion` container profiles the live `ecommerce` schema and writes it to GMS; it is intentionally a successful one-shot container while the services stay running.
+- Warehouse credentials are local-only (`agent` / `agent`, database `warehouse`). The role owns the seeded schema, so agents can exercise real reads and transactional writes.
+- Do not start `datahub docker quickstart` alongside the repository stack: both bind ports `8080` and `9002` and use separate state. Use `docker compose down --volumes` for a destructive clean reset.
 - The DataHub CLI runs on Python 3.12 here and prints a benign "Python versions above 3.11 are not actively tested" warning; the CLI and Agent Context Kit work fine. The image ships Python 3.11 as `python3`; a JIT (non-Build) pod may only have 3.12, and `scripts/install-deps.sh` falls back to it automatically.
 - Agent read/write to the graph works via the new SDK client that Agent Context Kit wraps: `from datahub.sdk import DataHubClient; client = DataHubClient.from_env()` (reads `~/.datahubenv`, written by `datahub init --username datahub --password datahub`). Wrap tools with `datahub_agent_context.DataHubContext(client=client)`.
 

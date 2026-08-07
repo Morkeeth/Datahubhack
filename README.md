@@ -15,22 +15,40 @@ The concept forge is complete. **Join Treaty** is the locked winner:
 Read the [final ranking](docs/final-ranking.md) and locked
 [build brief](docs/build-brief.md).
 
-## Quick setup
+## One-command local substrate
 
 ```bash
-# 1) Tooling (CLI, Agent Context Kit, MCP warm cache)
-bash scripts/install-deps.sh
-
-# 2) Local DataHub + sample data (Docker required)
-bash scripts/setup-datahub.sh
-
-# 3) Sanity check
-bash scripts/check-datahub.sh
+docker compose up
 ```
 
-- UI: http://localhost:9002 — login `datahub` / `datahub`
-- GMS: http://localhost:8080
-- Details: [infra/datahub/README.md](infra/datahub/README.md)
+From a clean clone, Compose starts:
+
+- DataHub OSS at http://localhost:9002 (`datahub` / `datahub`) with GMS at
+  http://localhost:8080
+- a writable Postgres warehouse at `localhost:5432`
+  (`agent` / `agent`, database `warehouse`)
+- a one-shot ingestion job that profiles the warehouse and publishes its
+  `ecommerce` tables and view to DataHub
+
+Wait until `metadata-ingestion` reports `Pipeline finished successfully`.
+DataHub and the warehouse remain running after that one-shot container exits.
+Details and verification commands:
+[infra/datahub/README.md](infra/datahub/README.md).
+
+Query a real entity from the live graph:
+
+```bash
+bash scripts/query-seeded-entity.sh
+```
+
+Stop the stack with `docker compose down`; add `--volumes` for a completely
+clean reset.
+
+Python tooling for later agent implementation remains available through:
+
+```bash
+bash scripts/install-deps.sh
+```
 
 ## Concept forge
 
