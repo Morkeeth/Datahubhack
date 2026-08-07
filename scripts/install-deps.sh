@@ -5,11 +5,18 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 
-echo "==> Python toolchain"
-python3 -m pip install --user --upgrade pip setuptools wheel
+# Prefer Python 3.11 (DataHub CLI actively tested there)
+if command -v python3.11 >/dev/null 2>&1; then
+  PY=python3.11
+else
+  PY=python3
+fi
+
+echo "==> Python toolchain ($PY)"
+"$PY" -m pip install --user --upgrade pip setuptools wheel
 
 echo "==> DataHub CLI + Agent Context Kit"
-python3 -m pip install --user --upgrade \
+"$PY" -m pip install --user --upgrade \
   "acryl-datahub" \
   "datahub-agent-context" \
   "datahub-agent-context[langchain]" \
@@ -21,7 +28,7 @@ python3 -m pip install --user --upgrade \
 
 if [[ -f "$ROOT/requirements.txt" ]]; then
   echo "==> Project requirements.txt"
-  python3 -m pip install --user -r "$ROOT/requirements.txt"
+  "$PY" -m pip install --user -r "$ROOT/requirements.txt"
 fi
 
 echo "==> Warm npm cache for DataHub MCP server"
@@ -30,6 +37,6 @@ npx --yes @acryldata/mcp-server-datahub --help >/dev/null 2>&1 || true
 echo "==> Verify CLI"
 export PATH="${HOME}/.local/bin:${PATH}"
 datahub version || datahub --version || true
-python3 -c "import datahub_agent_context; print('datahub-agent-context OK')"
+"$PY" -c "import datahub_agent_context; print('datahub-agent-context OK')"
 
 echo "==> Install complete"
