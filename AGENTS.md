@@ -57,6 +57,14 @@ npx -y @acryldata/mcp-server-datahub
 - Ports forwarded: `9002` (UI), `8080` (GMS), `3000` (app).
 - Prefer committing on branch `cursor/<name>-4c9d` and opening a PR against `main`.
 
+### Verified setup notes (non-obvious)
+
+- Nested Docker needs `fuse-overlayfs`. Docker 29 defaults to the containerd snapshotter, which ignores the `fuse-overlayfs` storage-driver, so `.cursor/Dockerfile` sets `features.containerd-snapshotter: false` in `daemon.json`. Keep that or quickstart can fail to start containers in the VM.
+- Sample data: the pinned CLI (`acryl-datahub 1.6.0.6`) has no working `datahub datapack load showcase-ecommerce` (missing bundled resource), so `scripts/setup-datahub.sh` logs a graceful failure for that step. To load a live catalog for demos, run `datahub docker ingest-sample-data` after quickstart — it seeds ~7 sample datasets.
+- Quickstart pulls DataHub `v1.7.0` images (~a few minutes on first boot) and runs 6 containers (gms, frontend, mysql, kafka-broker, opensearch, actions). Wait for `datahub-datahub-gms-quickstart-1` to be `healthy` before querying.
+- The DataHub CLI runs on Python 3.12 here and prints a benign "Python versions above 3.11 are not actively tested" warning; the CLI and Agent Context Kit work fine. The image ships Python 3.11 as `python3`; a JIT (non-Build) pod may only have 3.12, and `scripts/install-deps.sh` falls back to it automatically.
+- Agent read/write to the graph works via the new SDK client that Agent Context Kit wraps: `from datahub.sdk import DataHubClient; client = DataHubClient.from_env()` (reads `~/.datahubenv`, written by `datahub init --username datahub --password datahub`). Wrap tools with `datahub_agent_context.DataHubContext(client=client)`.
+
 ## Locked build workflow
 
 1. Treat `docs/build-brief.md` as the scope contract.
