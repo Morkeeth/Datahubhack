@@ -44,11 +44,38 @@ bash scripts/query-seeded-entity.sh
 Stop the stack with `docker compose down`; add `--volumes` for a completely
 clean reset.
 
-Python tooling for later agent implementation remains available through:
+Python tooling and the Join Treaty app are installed by:
 
 ```bash
 bash scripts/install-deps.sh
 ```
+
+## Join Treaty demo (< 3 minutes)
+
+With the substrate running (`docker compose up`) and deps installed, the whole
+mine → validate → native write → proof loop is four commands:
+
+```bash
+export DATAHUB_GMS_URL=http://localhost:8080
+join-treaty seed     # emit real DataHub Query entities for the warehouse joins
+join-treaty audit    # deterministic: 3 accepted N:1 treaties, 2 rejected negatives
+join-treaty apply --all-accepted --yes   # native ERModelRelationship + dataset receipts + read-after-write
+join-treaty serve    # evidence/relationship view at http://localhost:3000
+```
+
+What it does: parses explicit single-column equality joins from query history
+with SQLGlot, requires the same join in ≥ 3 independent queries, validates field
+existence and type compatibility, infers cardinality from column profiles (and
+**abstains** without positive evidence), then writes a native
+`ERModelRelationship` plus a `join_treaty:*` receipt onto both datasets — proven
+by read-after-write. Re-running `apply` is idempotent (`0 new`).
+
+- Offline artifact: [examples/join-treaty-receipt.json](examples/join-treaty-receipt.json)
+- Deterministic tests: `pytest app/tests`
+- Design + morning checklist: [docs/night-build-plan.md](docs/night-build-plan.md)
+- DataHub OSS V2 does not yet render ER relationships in its UI; the native
+  proof is the read-after-write plus the receipt in each dataset's Properties
+  tab (an honest platform gap, not a faked screenshot).
 
 ## Concept forge
 
@@ -75,7 +102,9 @@ Rules and scoring: [docs/playbook.md](docs/playbook.md). Final ruling:
 
 ## Status
 
-**Ideation closed. Join Treaty locked; implementation is next.**
+**Ideation closed. Join Treaty MVP built on the substrate: deterministic
+mining, native `ERModelRelationship` write-back, dataset receipts, web view,
+and tests.**
 
 ## License
 

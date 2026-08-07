@@ -68,6 +68,15 @@ npx -y @acryldata/mcp-server-datahub
 - The DataHub CLI runs on Python 3.12 here and prints a benign "Python versions above 3.11 are not actively tested" warning; the CLI and Agent Context Kit work fine. The image ships Python 3.11 as `python3`; a JIT (non-Build) pod may only have 3.12, and `scripts/install-deps.sh` falls back to it automatically.
 - Agent read/write to the graph works via the new SDK client that Agent Context Kit wraps: `from datahub.sdk import DataHubClient; client = DataHubClient.from_env()` (reads `~/.datahubenv`, written by `datahub init --username datahub --password datahub`). Wrap tools with `datahub_agent_context.DataHubContext(client=client)`.
 
+### Join Treaty app (`app/`)
+
+- Package `join_treaty`, installed editable by `scripts/install-deps.sh` (`pip install -e app`). CLI: `join-treaty seed|audit|apply|serve|demo`. Tests: `pytest app/tests` (pure/deterministic, no GMS needed).
+- The pipeline needs the substrate up (`docker compose up`) and `DATAHUB_GMS_URL=http://localhost:8080`. It reasons over the ingested `ecommerce` Postgres datasets, so run it only after `metadata-ingestion` has exited `0`.
+- `join-treaty audit`/`serve` enumerate Query entities via the **search index**, which is async: after `join-treaty seed`, wait a few seconds before auditing or newly seeded queries may be missing. Aspect reads (schema/profile/ER/receipt) are immediate.
+- `DatasetProfile` is timeseries — read it with `get_latest_timeseries_value`, not `get_aspect`. Cardinality inference keys off `fieldProfiles[].uniqueProportion`.
+- Writes are idempotent by construction: query URNs hash the SQL, and the ER relationship URN + receipt key are derived from the join, so re-running `seed`/`apply` overwrites identically (`apply` reports `0 new`).
+- DataHub OSS V2 UI does not render `ERModelRelationship`; verify writes via GraphQL/`get_aspect` and the `join_treaty:*` custom property in each dataset's Properties tab. The web view runs on port `3000`.
+
 ## Locked build workflow
 
 1. Treat `docs/build-brief.md` as the scope contract.
