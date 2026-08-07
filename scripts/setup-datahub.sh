@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
-# Start local DataHub (Docker quickstart) and load showcase sample data.
-# Judges cannot reach a private cloud instance — demos must work from this path.
+# Detached wrapper for the one-command Compose substrate.
+# The canonical stranger path remains: docker compose up
 set -euo pipefail
 
-export PATH="${HOME}/.local/bin:${PATH}"
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "$ROOT"
 
 if ! command -v docker >/dev/null 2>&1; then
   echo "Docker is required. Install Docker Desktop / Engine, then retry." >&2
@@ -20,36 +21,33 @@ if ! docker info >/dev/null 2>&1; then
   docker info >/dev/null 2>&1 || exit 1
 fi
 
-if ! command -v datahub >/dev/null 2>&1; then
-  echo "Installing DataHub CLI..."
-  python3 -m pip install --user --upgrade acryl-datahub
-  export PATH="${HOME}/.local/bin:${PATH}"
+echo "==> Starting DataHub, warehouse, and metadata ingestion"
+docker compose up --detach
+
+echo "==> Waiting for the metadata ingestion job"
+ingestion_id="$(docker compose ps --quiet metadata-ingestion)"
+while [[ -n "$ingestion_id" ]] && [[ "$(docker inspect --format '{{.State.Running}}' "$ingestion_id")" == "true" ]]; do
+  sleep 2
+done
+
+ingestion_exit="$(docker inspect --format '{{.State.ExitCode}}' "$ingestion_id")"
+if [[ "$ingestion_exit" != "0" ]]; then
+  docker compose logs metadata-ingestion
+  echo "Metadata ingestion failed with exit code ${ingestion_exit}" >&2
+  exit "$ingestion_exit"
 fi
-
-echo "==> Starting DataHub quickstart (this can take several minutes on first pull)"
-datahub docker quickstart
-
-echo "==> Configuring CLI for local instance"
-datahub init --username datahub --password datahub || true
-
-echo "==> Loading showcase-ecommerce sample datapack"
-datahub datapack load showcase-ecommerce || {
-  echo "Datapack load failed or unavailable — UI still works at http://localhost:9002"
-  echo "Default login: datahub / datahub"
-}
 
 cat <<'EOF'
 
 DataHub is ready for local demos:
   UI:  http://localhost:9002  (datahub / datahub)
   GMS: http://localhost:8080
+  DB:  postgresql://agent:agent@localhost:5432/warehouse
 
-Next:
-  - Create a personal access token in the UI (Settings → Access Tokens)
-  - export DATAHUB_GMS_URL=http://localhost:8080
-  - export DATAHUB_GMS_TOKEN=<your-token>
-  - npx -y @acryldata/mcp-server-datahub
+Verify:
+  bash scripts/check-datahub.sh
+  bash scripts/query-seeded-entity.sh
 
-Stop:   datahub docker quickstart --stop
-Reset:  datahub docker nuke
+Stop:   docker compose down
+Reset:  docker compose down --volumes
 EOF

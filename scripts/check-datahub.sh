@@ -1,25 +1,31 @@
 #!/usr/bin/env bash
-# Print DataHub + MCP connectivity status for demos and agents.
+# Verify the Compose substrate, warehouse, ingestion, and live endpoints.
 set -euo pipefail
 
-export PATH="${HOME}/.local/bin:${PATH}"
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "$ROOT"
 
-echo "Docker:     $(command -v docker >/dev/null && echo OK || echo MISSING)"
-if command -v docker >/dev/null 2>&1; then
-  if docker info >/dev/null 2>&1; then
-    echo "Daemon:     running"
-  else
-    echo "Daemon:     not running"
-  fi
-fi
+docker info >/dev/null
+docker compose config --quiet
 
-echo "datahub CLI:$(command -v datahub >/dev/null && datahub version 2>/dev/null | head -1 || echo ' MISSING')"
-echo "GMS URL:    ${DATAHUB_GMS_URL:-unset}"
-echo "GMS token:  ${DATAHUB_GMS_TOKEN:+set}${DATAHUB_GMS_TOKEN:-unset}"
+gms_code="$(curl --silent --output /dev/null --write-out '%{http_code}' http://localhost:8080/health)"
+ui_code="$(curl --silent --output /dev/null --write-out '%{http_code}' http://localhost:9002/)"
+ingestion_id="$(docker compose ps --all --quiet metadata-ingestion)"
+ingestion_exit="$(docker inspect --format '{{.State.ExitCode}}' "$ingestion_id")"
+warehouse_rows="$(
+  docker compose exec --no-TTY warehouse \
+    psql --tuples-only --no-align -U agent -d warehouse \
+    -c 'select count(*) from ecommerce.customers;'
+)"
 
-if [[ -n "${DATAHUB_GMS_URL:-}" ]]; then
-  code=$(curl -s -o /dev/null -w "%{http_code}" "${DATAHUB_GMS_URL}/health" || true)
-  echo "GMS health: HTTP ${code}"
-fi
+printf 'Docker:             running\n'
+printf 'Compose config:      valid\n'
+printf 'GMS health:          HTTP %s\n' "$gms_code"
+printf 'UI probe:            HTTP %s\n' "$ui_code"
+printf 'Warehouse customers: %s rows\n' "$warehouse_rows"
+printf 'Metadata ingestion:  exit %s\n' "$ingestion_exit"
 
-echo "UI probe:   $(curl -s -o /dev/null -w "%{http_code}" http://localhost:9002/ 2>/dev/null || echo unreachable)"
+[[ "$gms_code" == "200" ]]
+[[ "$ui_code" == "200" ]]
+[[ "$warehouse_rows" == "3" ]]
+[[ "$ingestion_exit" == "0" ]]
