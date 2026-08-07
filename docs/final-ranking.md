@@ -115,8 +115,9 @@ owners, which renders natively and is technically simpler.
 
 The winner must ship exactly these capabilities:
 
-1. Mine explicit single-column equality joins from seeded DataHub Query entities
-   and require at least three independent occurrences.
+1. Enrich two real `showcase-ecommerce` assets with deterministic Query/profile
+   evidence, mine explicit single-column equality joins, and require at least
+   three independent occurrences.
 2. Reject unless both fields exist with compatible types and profile evidence
    supports a cardinality inference.
 3. Write a native `ERModelRelationship` carrying the field mapping,

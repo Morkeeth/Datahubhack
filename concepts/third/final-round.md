@@ -40,9 +40,10 @@ because lineage describes data flow, not how datasets relate.
    DataHub's Properties tab.
 5. Rerun to show idempotency (`0 new relationships`).
 
-**Local path:** Seed two datasets, schemas, profiles, and four Query entities
-into current DataHub quickstart. The showcase datapack does not include the
-required query/profile evidence, so the seed is explicit and reproducible.
+**Local path:** Load `showcase-ecommerce`, select two stable dataset entities,
+then seed profiles and four Query entities against those real URNs. The
+datapack does not include the required query/profile evidence, so the enrichment
+is explicit and reproducible; fully project-authored datasets are fallback only.
 
 **Artifact:** `join-treaty-receipt.json` containing source aspect versions,
 query evidence, emitted MCPs, and read-after-write verification.

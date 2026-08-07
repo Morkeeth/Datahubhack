@@ -21,8 +21,9 @@ Ruling: `docs/final-ranking.md`
 
 ### Must have (demo path)
 
-1. Seed two datasets, compatible schemas, profiles, and at least four Query
-   entities into current DataHub OSS quickstart.
+1. Load `showcase-ecommerce`, select two stable existing datasets, then enrich
+   them with compatible profiles and at least four Query entities. Create
+   project-authored datasets only as a documented fallback.
 2. Parse explicit single-column equality predicates and require the same join
    in at least three independent Query URNs.
 3. Validate field existence/type compatibility and infer cardinality only when
@@ -60,14 +61,15 @@ Ruling: `docs/final-ranking.md`
   `ERModelRelationshipProperties`; `DatasetPatchBuilder` custom-property
   receipts; read-back through GraphQL / SDK.
 - UI / CLI: one small local web view plus seed/audit/apply CLI commands.
-- Sample data: project-authored deterministic treaty fixture loaded after
-  `scripts/setup-datahub.sh`; do not assume showcase-ecommerce contains Query
-  or profile aspects.
+- Sample data: real `showcase-ecommerce` dataset entities loaded by
+  `scripts/setup-datahub.sh`, enriched by a deterministic treaty fixture. The
+  datapack does not contain the required Query/profile aspects, so seed those
+  explicitly while preserving the real asset URNs.
 
 ## Demo script (&lt;3 minutes)
 
-1. **0:00–0:20** — Open orders/customers and show no treaty receipt. Explain:
-   lineage is flow; joins are semantic relationships.
+1. **0:00–0:20** — Open the selected `showcase-ecommerce` datasets and show no
+   treaty receipt. Explain: lineage is flow; joins are semantic relationships.
 2. **0:20–0:55** — Run discovery. Show three Query URNs supporting
    `orders.customer_id = customers.id`.
 3. **0:55–1:25** — Show schema compatibility and profile-supported `N:1`
