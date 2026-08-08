@@ -3,8 +3,8 @@
 > The single source of truth for where this project is **right now**. If you only
 > open one file, open this one. Every agent updates it at the end of its turn.
 
-- **Last updated:** 2026-08-08 22:01 UTC by Cursor Lane A (`bc-9950b172`)
-- **Phase:** **Requester-derived schema payoff verified end-to-end.**
+- **Last updated:** 2026-08-08 22:28 UTC by Cursor build agent (`bc-9950b172`)
+- **Phase:** **Real builder-agent decision verified end-to-end.**
 - **Deadline:** Mon 10 Aug 2026, 17:00 EDT / **23:00 Paris**
 - **Worker branch:** `cursor/datahub-hack-setup-4c9d` · repo `Morkeeth/nullspace`
 
@@ -33,6 +33,13 @@ Cold isolated acceptance eval now reports **16 passed, 0 failed, 1 pending**;
 the only pending item is D9. Lane A waits for the lineage search index as well
 as the direct aspect, so the UI-facing GraphQL read is green before solidify returns.
 
+**Outcome 1 is now real.** `python3 -m nullspace.builder` connects as an MCP
+client, calls `open_demand`, chooses the highest independent demand without a
+hardcoded want, states its reason, reads the registered queries, discovers a
+warehouse source from DataHub, and prints executable dbt SQL. Verified both ways:
+demand 2/3 visibly declined with a shortfall; demand 3/3 chose, generated SQL,
+claimed, and went solid.
+
 ## THE ONE OPEN DECISION
 
 > **Does `dbt_project` get a public GitHub remote?** (D9)
@@ -50,8 +57,8 @@ Everything else in Phase 1 proceeds without it.
 | 3 | Product-scope ruling | ✅ **CLOSED** — Nullspace | — | `rulings/002` |
 | 4 | **Nullspace Phase 1 — schema · lineage · native Owners** | ✅ **DataHub read-back verified** | — | Lane A `nullspace/emit.py` |
 | 5 | Nullspace Phase 2 — read-after-write + idempotency | ✅ **20-process concurrency verified** | — | `nullspace/persist.py` |
-| 6 | Phase 3 — the reveal (board, legible on film) | 🔴 Not started | Cursor agent | `handoffs/003` §3 |
-| 7 | **Phase 4 — video, description, OSS PR** | 🔴 **Not started — 2 of 6 judged dimensions at ZERO** | Cursor agent | `handoffs/003` §3 |
+| 6 | Real builder-agent decision | ✅ choose + reason + source discovery + generated SQL; decline path verified | — | `python3 -m nullspace.builder` |
+| 7 | **OSS contribution** | 🔴 Blocked: no `Morkeeth/datahub` fork and no upstream write permission | Oscar | DataHub docs candidate researched |
 | 8 | Stranger path / secret hygiene | ✅ `datahub` on PATH; Compose valid; gitleaks clean | — | `scripts/install-deps.sh`, `compose.yaml` |
 
 ## Live DataHub witness (2026-08-08 21:55 UTC)
@@ -63,6 +70,8 @@ Everything else in Phase 1 proceeds without it.
 | upstream lineage | `total=1` → `postgres,local-warehouse.warehouse.ecommerce.revenue_events,DEV` |
 | native ownership | 3 Owners: `revenue-copilot-1.0.0`, `finance-agent-2.3.1`, `board-deck-writer-0.9.0`; type `nullspace_requester` |
 | contract payoff | `3 running, 0 blocked`; schema read back from DataHub |
+| builder decision | chose highest demand (3/3), generated SQL from 3 query contracts and DataHub source |
+| decline path | `demand 2 of 3; 1 more requester agent must ask` |
 | PR | **still false**: `file:///workspace/dbt_project#...`; no remote |
 | cold acceptance | `16 passed, 0 failed, 1 pending` (D9 only), solid in 8s |
 
@@ -73,7 +82,9 @@ stress reached 20/20.
 ## Next action for each party (right now)
 
 - **Oscar:** rule D9 (public remote for `dbt_project` / `Morkeeth/nullspace-dbt`).
-- **Cursor Lane A:** keep trunk; contract-derived build + concurrency complete.
+- **Oscar:** create/fork `Morkeeth/datahub` if the upstream OSS PR remains required;
+  this agent has no upstream write permission and no fork exists.
+- **Cursor build agent:** finish fresh-clone timing, then hand back the trunk.
 - **Claude Lane B:** rebase onto Cursor; make acceptance eval rerunnable (current
   fixed demand finds yesterday's solid asset on a second run), then board reveal
   and submission package. Do not overwrite Lane A files.

@@ -1,12 +1,9 @@
-# AGENTS.md — DataHub Agent Hackathon
+# AGENTS.md — Nullspace
 
 ## Mission
 
-Ship a working DataHub-powered agent for **Build with DataHub: The Agent Hackathon** (deadline Mon 10 Aug 2026, 5pm EDT).
-
-The concept forge is closed. **Join Treaty** is locked in
-`docs/build-brief.md`; implement only that scoped MVP. Do not reopen ideation or
-add broad Nullspace/lineage-repair features.
+Ship **Nullspace**, demand-side metadata, for Build with DataHub (deadline Mon
+10 Aug 2026, 5pm EDT). The concept is decided. Do not reopen or re-rank it.
 
 ## Collaboration (read this first, every session)
 
@@ -26,10 +23,9 @@ chat. Before doing anything:
 
 | Path | Purpose |
 | --- | --- |
-| `docs/playbook.md` | Scoring rules for concepts |
-| `docs/final-ranking.md` | Final ruling and competitive analysis |
-| `docs/build-brief.md` | Locked winner + ship scope |
-| `concepts/{grok,gpt,third}/` | Independent concept sets |
+| `nullspace/` | Shipping product: demand, builder agent, native DataHub writeback |
+| `docs/collab/STATE.md` | Current verified state |
+| `docs/collab/LANES.md` | File ownership contract |
 | `compose.yaml` | One-command DataHub + seeded warehouse substrate |
 | `infra/warehouse/init.sql` | Real writable warehouse seed |
 | `infra/datahub/postgres.yml` | Warehouse-to-DataHub ingestion recipe |
@@ -42,8 +38,9 @@ chat. Before doing anything:
 
 - Stranger must go README → demo in &lt;3 minutes
 - Judges use **local Docker DataHub**, not a private instance
-- Prefer MCP Server and/or Agent Context Kit; write back to the graph when it strengthens the story
-- Keep the demo path boring and reliable over ambitious scope
+- DataHub is the witness: report what it returned, never merely what was sent
+- Never claim a PR while `pr_url` is `file://`
+- Never `git add -A`; `dbt_project/` has a nested `.git`
 
 ## Local DataHub
 
@@ -75,16 +72,18 @@ npx -y @acryldata/mcp-server-datahub
 
 ### Verified setup notes (non-obvious)
 
-- Nested Docker needs `fuse-overlayfs`. Docker 29 defaults to the containerd snapshotter, which ignores the `fuse-overlayfs` storage-driver, so `.cursor/Dockerfile` sets `features.containerd-snapshotter: false` in `daemon.json`. Keep that or quickstart can fail to start containers in the VM.
+- Nested Docker needs `fuse-overlayfs`. Docker daemon configuration belongs to
+  the environment image; this repository intentionally has no `daemon.json`.
 - The repository Compose stack pins DataHub `v1.7.0` and Postgres `16.4`. The `metadata-ingestion` container profiles the live `ecommerce` schema and writes it to GMS; it is intentionally a successful one-shot container while the services stay running.
 - Warehouse credentials are local-only (`agent` / `agent`, database `warehouse`). The role owns the seeded schema, so agents can exercise real reads and transactional writes.
 - Do not start `datahub docker quickstart` alongside the repository stack: both bind ports `8080` and `9002` and use separate state. Use `docker compose down --volumes` for a destructive clean reset.
 - The DataHub CLI runs on Python 3.12 here and prints a benign "Python versions above 3.11 are not actively tested" warning; the CLI and Agent Context Kit work fine. The image ships Python 3.11 as `python3`; a JIT (non-Build) pod may only have 3.12, and `scripts/install-deps.sh` falls back to it automatically.
 - Agent read/write to the graph works via the new SDK client that Agent Context Kit wraps: `from datahub.sdk import DataHubClient; client = DataHubClient.from_env()` (reads `~/.datahubenv`, written by `datahub init --username datahub --password datahub`). Wrap tools with `datahub_agent_context.DataHubContext(client=client)`.
 
-### Join Treaty app (`app/`)
+### Join Treaty reference (`app/`)
 
-- Package `join_treaty`, installed editable by `scripts/install-deps.sh` (`pip install -e app`). CLI: `join-treaty seed|audit|apply|serve|demo`. Tests: `pytest app/tests` (pure/deterministic, no GMS needed).
+- Join Treaty is not the product. Its read-after-write and idempotency code is a
+  verified reference only. Tests remain useful: `pytest app/tests`.
 - The pipeline needs the substrate up (`docker compose up`) and `DATAHUB_GMS_URL=http://localhost:8080`. It reasons over the ingested `ecommerce` Postgres datasets, so run it only after `metadata-ingestion` has exited `0`.
 - `join-treaty audit`/`serve` enumerate Query entities via the **search index**, which is async: after `join-treaty seed`, wait a few seconds before auditing or newly seeded queries may be missing. Aspect reads (schema/profile/ER/receipt) are immediate.
 - `DatasetProfile` is timeseries — read it with `get_latest_timeseries_value`, not `get_aspect`. Cardinality inference keys off `fieldProfiles[].uniqueProportion`.
@@ -93,8 +92,7 @@ npx -y @acryldata/mcp-server-datahub
 
 ## Locked build workflow
 
-1. Treat `docs/build-brief.md` as the scope contract.
-2. Build the five must-have capabilities before any nice-to-have.
-3. Keep verdicts deterministic and require positive evidence; abstain on gaps.
-4. Persist native DataHub metadata and prove it via read-after-write.
-5. Keep the README-to-demo path under three minutes.
+1. Run `python3 scripts/eval_nullspace.py` before and after changes.
+2. Keep the causal chain: miss → demand → builder decision → claim → solid.
+3. Persist native DataHub metadata and prove it via read-after-write.
+4. Keep the README-to-reveal path under three minutes.

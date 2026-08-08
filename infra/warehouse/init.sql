@@ -44,6 +44,13 @@ CREATE TABLE ecommerce.revenue_events (
     churned_mrr NUMERIC(14, 2) NOT NULL DEFAULT 0
 );
 
+CREATE TABLE ecommerce.pipeline_performance (
+    rep_id TEXT PRIMARY KEY,
+    pipeline_value NUMERIC(14, 2) NOT NULL,
+    quota NUMERIC(14, 2) NOT NULL,
+    coverage_ratio NUMERIC(8, 3) NOT NULL
+);
+
 INSERT INTO ecommerce.customers (customer_id, email, country_code, created_at)
 VALUES
     (101, 'ada@example.com', 'GB', '2026-08-01T09:00:00Z'),
@@ -83,6 +90,14 @@ VALUES
     (3002, '2026-08', 'scaleup', 32000.00, 1200.00),
     (3003, '2026-08', 'enterprise', 68000.00, 2500.00);
 
+INSERT INTO ecommerce.pipeline_performance (
+    rep_id, pipeline_value, quota, coverage_ratio
+)
+VALUES
+    ('rep-ada', 450000.00, 150000.00, 3.000),
+    ('rep-grace', 280000.00, 125000.00, 2.240),
+    ('rep-linus', 510000.00, 175000.00, 2.914);
+
 CREATE VIEW ecommerce.customer_order_summary AS
 SELECT
     c.customer_id,
@@ -104,3 +119,5 @@ COMMENT ON TABLE ecommerce.trials IS
     'Disclosed demo trials used by the Nullspace dbt solidification flow.';
 COMMENT ON TABLE ecommerce.revenue_events IS
     'Disclosed demo revenue events used by requester-derived ghost contracts.';
+COMMENT ON TABLE ecommerce.pipeline_performance IS
+    'Disclosed demo sales pipeline used by requester-driven builder decisions.';

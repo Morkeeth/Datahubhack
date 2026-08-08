@@ -241,6 +241,85 @@ class DataHubClient:
             time.sleep(0.5)
         return returned
 
+    def wait_for_search_urn(
+        self,
+        query: str,
+        urn: str,
+        *,
+        timeout_seconds: float = 15.0,
+    ) -> bool:
+        """Wait until DataHub's search index exposes a just-written ghost."""
+        deadline = time.monotonic() + timeout_seconds
+        while time.monotonic() < deadline:
+            if any(hit["urn"] == urn for hit in self._graphql_search(query)):
+                return True
+            time.sleep(0.25)
+        return False
+
+    def find_source_covering_fields(
+        self, required_fields: list[str]
+    ) -> dict[str, Any] | None:
+        """Find a real non-Nullspace dataset whose returned schema covers all fields."""
+        query = """
+        query {
+          scrollAcrossEntities(input: {
+            types: [DATASET],
+            query: "*",
+            count: 500
+          }) {
+            searchResults {
+              entity {
+                urn
+                ... on Dataset {
+                  platform { name }
+                  schemaMetadata {
+                    fields { fieldPath nativeDataType nullable }
+                  }
+                }
+              }
+            }
+          }
+        }
+        """
+        response = httpx.post(
+            f"{self.gms}/api/graphql",
+            headers=self._headers,
+            json={"query": query},
+            timeout=30.0,
+        )
+        response.raise_for_status()
+        block = (
+            (response.json().get("data") or {}).get("scrollAcrossEntities") or {}
+        )
+        required = {field.lower() for field in required_fields}
+        candidates = []
+        for result in block.get("searchResults") or []:
+            entity = result.get("entity") or {}
+            urn = entity.get("urn", "")
+            if ":nullspace," in urn:
+                continue
+            fields = (entity.get("schemaMetadata") or {}).get("fields") or []
+            by_name = {
+                str(field["fieldPath"]).lower(): {
+                    "name": field["fieldPath"],
+                    "native_type": field.get("nativeDataType") or "VARCHAR",
+                    "nullable": field.get("nullable", True),
+                }
+                for field in fields
+            }
+            if required.issubset(by_name):
+                candidates.append(
+                    {
+                        "urn": urn,
+                        "platform": (entity.get("platform") or {}).get("name"),
+                        "fields": [by_name[field] for field in required_fields],
+                        "extra_field_count": len(by_name) - len(required),
+                    }
+                )
+        if not candidates:
+            return None
+        return min(candidates, key=lambda item: (item["extra_field_count"], item["urn"]))
+
     def entity_exists(self, urn: str) -> bool:
         r = httpx.post(
             f"{self.gms}/api/graphql",

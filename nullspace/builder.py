@@ -2,53 +2,32 @@
 
 from __future__ import annotations
 
+import asyncio
+import json
+import os
 import subprocess
-from dataclasses import dataclass
+import sys
+from dataclasses import asdict, dataclass
 from pathlib import Path
+from typing import Any
 
+from nullspace.client import DataHubClient
 from nullspace.config import settings
 from nullspace.ghosts import Ghost, Nullspace
 
-DBT_MODEL = '''-- Nullspace-generated model for demand: {want}
+FALLBACK_DBT_MODEL = '''-- Nullspace fallback model for demand: {want}
 -- Requesters: {requesters}
 -- Ghost URN: {urn}
---
--- Columns below are the union of what the requesting agents asked for.
--- Source: nullspace/agents/contracts.py :: ContractStore.demanded_schema
--- This is a scaffold a human reviews and fills in, not a finished model.
+-- Schema source: disclosed fallback (no requester queries were registered)
 
 select
-{columns}
-from {{{{ ref('stg_nullspace_source') }}}}
+    cohort_id,
+    count(*) as trials,
+    count(converted_at) as conversions,
+    count(converted_at)::double precision / nullif(count(*), 0) as trial_to_paid_rate
+from {{{{ source('warehouse_source', 'trials') }}}}
+group by cohort_id
 '''
-
-REVENUE_DBT_MODEL = '''-- Nullspace-generated model for demand: {want}
--- Requesters: {requesters}
--- Ghost URN: {urn}
--- Schema source: union of fields declared by requester-agent contracts
-
-select
-    month,
-    segment,
-    sum(mrr)::double precision as mrr,
-    sum(churned_mrr)::double precision as churned_mrr
-from {{{{ source('ecommerce', 'revenue_events') }}}}
-group by month, segment
-'''
-
-
-STG_MODEL = '''-- Seed staging model so the generated model can ref something real in CI/demo.
-select * from {{{{ source('ecommerce', 'trials') }}}}
-'''
-
-SOURCES_YML = """version: 2
-sources:
-  - name: ecommerce
-    schema: ecommerce
-    tables:
-      - name: trials
-      - name: revenue_events
-"""
 
 SOLID_SCHEMA_FIELDS = [
     {"name": "cohort_id", "native_type": "VARCHAR", "nullable": False},
@@ -56,18 +35,9 @@ SOLID_SCHEMA_FIELDS = [
     {"name": "conversions", "native_type": "BIGINT", "nullable": False},
     {"name": "trial_to_paid_rate", "native_type": "DOUBLE", "nullable": True},
 ]
-FALLBACK_FIELDS = [str(field["name"]) for field in SOLID_SCHEMA_FIELDS]
-
-REVENUE_FIELDS = {
-    "month": {"name": "month", "native_type": "VARCHAR", "nullable": False},
-    "segment": {"name": "segment", "native_type": "VARCHAR", "nullable": False},
-    "mrr": {"name": "mrr", "native_type": "DOUBLE", "nullable": False},
-    "churned_mrr": {
-        "name": "churned_mrr",
-        "native_type": "DOUBLE",
-        "nullable": False,
-    },
-}
+_PLAN_STORE = Path(
+    os.getenv("NULLSPACE_BUILDER_PLANS", "/tmp/nullspace-builder-plans.json")
+)
 
 @dataclass(frozen=True)
 class BuildPlan:
@@ -75,54 +45,125 @@ class BuildPlan:
     model_sql: str
     upstream_urn: str
     schema_source: str
+    source_schema: str
+    source_table: str
+    decision_reason: str
 
 
-def plan_for_demand(want: str) -> BuildPlan:
-    """Use requester contracts when present; otherwise disclose the demo fallback."""
-    from nullspace.agents.contracts import ContractStore
+def _plan_key(want: str) -> str:
+    return want.strip().lower()
 
-    cfg = settings()
-    demanded = ContractStore().demanded_schema(want)
-    if not demanded:
-        return BuildPlan(
-            fields=SOLID_SCHEMA_FIELDS,
-            model_sql=DBT_MODEL,
-            upstream_urn=cfg.warehouse_source_urn,
-            schema_source=(
-                "fallback demo contract: no requester query fields were registered"
-            ),
-        )
 
-    unsupported = [field for field in demanded if field not in REVENUE_FIELDS]
-    if unsupported:
-        raise ValueError(
-            "build refused: requester contract includes unsupported fields "
-            f"{unsupported}; supported demo warehouse fields are "
-            f"{sorted(REVENUE_FIELDS)}; shortfall is {len(unsupported)} field"
-            f"{'s' if len(unsupported) != 1 else ''}"
-        )
-    return BuildPlan(
-        fields=[REVENUE_FIELDS[field] for field in demanded],
-        model_sql=REVENUE_DBT_MODEL,
-        upstream_urn=cfg.revenue_source_urn,
-        schema_source="requester contracts: union of declared query fields",
+def save_agent_plan(want: str, plan: BuildPlan) -> None:
+    """Persist the real builder agent's decision for the MCP build tool."""
+    data: dict[str, Any] = {}
+    if _PLAN_STORE.exists():
+        try:
+            data = json.loads(_PLAN_STORE.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError):
+            data = {}
+    data[_plan_key(want)] = asdict(plan)
+    _PLAN_STORE.parent.mkdir(parents=True, exist_ok=True)
+    temp = _PLAN_STORE.with_suffix(f".{os.getpid()}.tmp")
+    temp.write_text(json.dumps(data, indent=2), encoding="utf-8")
+    os.replace(temp, _PLAN_STORE)
+
+
+def _load_agent_plan(want: str) -> BuildPlan | None:
+    if not _PLAN_STORE.exists():
+        return None
+    try:
+        raw = json.loads(_PLAN_STORE.read_text(encoding="utf-8")).get(_plan_key(want))
+    except (json.JSONDecodeError, OSError):
+        return None
+    return BuildPlan(**raw) if raw else None
+
+
+def _source_parts(urn: str) -> tuple[str, str]:
+    try:
+        dataset_name = urn.split(",", 2)[1]
+        parts = dataset_name.split(".")
+        return parts[-2], parts[-1]
+    except (IndexError, ValueError) as exc:
+        raise ValueError(f"builder refused: cannot parse source dataset URN {urn!r}") from exc
+
+
+def generate_model_sql(
+    *,
+    want: str,
+    requesters: list[str],
+    ghost_urn: str,
+    fields: list[dict[str, object]],
+    source_table: str,
+) -> str:
+    """Compile executable SQL from the fields in the registered requester queries."""
+    projections = ",\n".join(f'    "{field["name"]}"' for field in fields)
+    return (
+        f"-- Nullspace builder-agent output for demand: {want}\n"
+        f"-- Requesters: {', '.join(requesters)}\n"
+        f"-- Ghost URN: {ghost_urn}\n"
+        "-- Generated from registered query contracts and a DataHub-returned source.\n\n"
+        "select\n"
+        f"{projections}\n"
+        f"from {{{{ source('warehouse_source', '{source_table}') }}}}\n"
     )
 
 
-def write_dbt_model(ghost: Ghost, repo: Path, model_sql: str) -> Path:
+def plan_for_demand(want: str) -> BuildPlan:
+    """Use a real builder-agent plan, otherwise an explicitly disclosed fallback."""
+    agent_plan = _load_agent_plan(want)
+    if agent_plan is not None:
+        return agent_plan
+
+    from nullspace.agents.contracts import ContractStore
+
+    demanded = ContractStore().demanded_schema(want)
+    if demanded:
+        raise ValueError(
+            "build refused: registered requester queries require the autonomous "
+            "builder agent to inspect open_demand, choose a ghost, discover a "
+            f"source, and write SQL; shortfall is a builder plan for {len(demanded)} "
+            "demanded fields"
+        )
+
+    cfg = settings()
+    source_schema, source_table = _source_parts(cfg.warehouse_source_urn)
+    return BuildPlan(
+        fields=SOLID_SCHEMA_FIELDS,
+        model_sql=FALLBACK_DBT_MODEL,
+        upstream_urn=cfg.warehouse_source_urn,
+        schema_source="disclosed fallback: no builder-agent plan was present",
+        source_schema=source_schema,
+        source_table=source_table,
+        decision_reason="direct build tool call used the disclosed fallback plan",
+    )
+
+
+def write_dbt_model(ghost: Ghost, repo: Path, plan: BuildPlan) -> Path:
     models = repo / "models"
     models.mkdir(parents=True, exist_ok=True)
-    stg = models / "stg_trials.sql"
-    stg.write_text(STG_MODEL, encoding="utf-8")
     sources = models / "sources.yml"
-    sources.write_text(SOURCES_YML, encoding="utf-8")
+    sources.write_text(
+        "version: 2\n"
+        "sources:\n"
+        "  - name: warehouse_source\n"
+        f"    schema: {plan.source_schema}\n"
+        "    tables:\n"
+        f"      - name: {plan.source_table}\n",
+        encoding="utf-8",
+    )
     out = models / f"{ghost.dataset_name}.sql"
-    out.write_text(
-        model_sql.format(
+    rendered_sql = (
+        plan.model_sql.format(
             want=ghost.want,
             requesters=", ".join(ghost.requesters),
             urn=ghost.urn,
-        ),
+        )
+        if "{want}" in plan.model_sql
+        else plan.model_sql
+    )
+    out.write_text(
+        rendered_sql,
         encoding="utf-8",
     )
     return out
@@ -134,7 +175,6 @@ def create_change_reference(repo: Path, branch: str, title: str, model_path: Pat
     subprocess.run(["git", "checkout", "-B", branch], cwd=repo, check=True, capture_output=True)
     explicit_paths = [
         "dbt_project.yml",
-        "models/stg_trials.sql",
         "models/sources.yml",
         str(model_path.relative_to(repo)),
     ]
@@ -191,7 +231,7 @@ def build_and_solidify(ns: Nullspace, want: str, *, builder_id: str = "builder-1
         )
 
     ghost = ns.claim(want, builder_id)
-    path = write_dbt_model(ghost, repo, plan.model_sql)
+    path = write_dbt_model(ghost, repo, plan)
     branch = f"nullspace/{ghost.dataset_name}"
     title = f"feat(nullspace): solidify {ghost.want}"
     pr_url = create_change_reference(repo, branch, title, path)
@@ -202,3 +242,142 @@ def build_and_solidify(ns: Nullspace, want: str, *, builder_id: str = "builder-1
         upstream_urns=[plan.upstream_urn],
         schema_source=plan.schema_source,
     )
+
+
+def _tool_json(result: Any) -> dict[str, Any]:
+    text = "\n".join(getattr(block, "text", "") for block in result.content)
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError:
+        return {"status": "error", "reason": f"MCP returned non-JSON: {text[:300]}"}
+
+
+def _choose_ghost(board: dict[str, Any]) -> tuple[dict[str, Any] | None, str]:
+    threshold = int(board.get("threshold", 3))
+    ghosts = [
+        ghost
+        for ghost in board.get("ghosts", [])
+        if ghost.get("state") == "ghost"
+    ]
+    if not ghosts:
+        return None, "declined: the demand board has 0 open ghosts"
+    ranked = sorted(
+        ghosts,
+        key=lambda ghost: (
+            -int(ghost.get("demand", 0)),
+            min(
+                (
+                    event.get("at_ms", 0)
+                    for event in ghost.get("resolution", [])
+                    if event.get("event") == "miss"
+                ),
+                default=0,
+            ),
+            str(ghost.get("want", "")),
+        ),
+    )
+    choice = ranked[0]
+    demand = int(choice.get("demand", 0))
+    if demand < threshold:
+        shortfall = threshold - demand
+        requester_word = "requester agent" if shortfall == 1 else "requester agents"
+        decline_reason = (
+            f"declined: highest demand is {demand} of {threshold}; "
+            f"{shortfall} more {requester_word} must ask"
+        )
+        return None, decline_reason
+    reason = (
+        f"chose {choice['want']!r}: highest independent demand "
+        f"({demand}, threshold {threshold}); oldest demand breaks ties"
+    )
+    return choice, reason
+
+
+async def run_builder_agent() -> dict[str, Any]:
+    """Observe the board over MCP, decide, generate SQL, then invoke the build tool."""
+    from mcp import ClientSession, Implementation, StdioServerParameters
+    from mcp.client.stdio import stdio_client
+
+    params = StdioServerParameters(
+        command=sys.executable,
+        args=["-m", "nullspace.mcp_server"],
+        env={**os.environ},
+    )
+    async with stdio_client(params) as (read, write), ClientSession(
+        read,
+        write,
+        client_info=Implementation(name="nullspace-builder", version="1.0.0"),
+    ) as session:
+        await session.initialize()
+        board = _tool_json(await session.call_tool("open_demand", {}))
+        choice, reason = _choose_ghost(board)
+        print(f"DECISION: {reason}")
+        if choice is None:
+            return {"status": "declined", "reason": reason, "board": board}
+
+        want = str(choice["want"])
+        contract = _tool_json(
+            await session.call_tool("contract_status", {"want": want})
+        )
+        fields = [str(field) for field in contract.get("demanded_schema", [])]
+        queries = contract.get("queries", [])
+        if not fields or not queries:
+            reason = (
+                f"declined: {want!r} has {len(queries)} registered queries and "
+                f"{len(fields)} demanded fields; at least 1 of each is required"
+            )
+            print(f"DECISION: {reason}")
+            return {"status": "declined", "reason": reason}
+
+        source = DataHubClient().find_source_covering_fields(fields)
+        if source is None:
+            reason = (
+                f"declined: no DataHub warehouse dataset covers all {len(fields)} "
+                f"demanded fields {fields}; shortfall cannot be satisfied"
+            )
+            print(f"DECISION: {reason}")
+            return {"status": "declined", "reason": reason}
+
+        source_schema, source_table = _source_parts(str(source["urn"]))
+        model_sql = generate_model_sql(
+            want=want,
+            requesters=list(choice.get("requesters", [])),
+            ghost_urn=str(choice["urn"]),
+            fields=list(source["fields"]),
+            source_table=source_table,
+        )
+        plan = BuildPlan(
+            fields=list(source["fields"]),
+            model_sql=model_sql,
+            upstream_urn=str(source["urn"]),
+            schema_source=(
+                "builder agent: registered requester queries + "
+                "DataHub-returned warehouse schema"
+            ),
+            source_schema=source_schema,
+            source_table=source_table,
+            decision_reason=reason,
+        )
+        save_agent_plan(want, plan)
+        print("GENERATED SQL:")
+        print(model_sql)
+
+        built = _tool_json(
+            await session.call_tool("claim_and_build", {"want": want})
+        )
+        built["decision_reason"] = reason
+        built["generated_sql"] = model_sql
+        built["source_urn"] = source["urn"]
+        return built
+
+
+def main() -> None:
+    result = asyncio.run(run_builder_agent())
+    print("RESULT:")
+    print(json.dumps(result, indent=2))
+    if result.get("status") not in {"solidified", "declined"}:
+        raise SystemExit(1)
+
+
+if __name__ == "__main__":
+    main()

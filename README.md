@@ -1,19 +1,16 @@
-# Join Treaty — DataHub Agent Hackathon
+# Nullspace
 
-Parallel multi-model ideation for **Build with DataHub: The Agent Hackathon** (deadline Mon 10 Aug 2026, 5pm EDT).
+**Demand-side metadata: a catalog entry for data that does not exist yet.**
 
-Public repo · Apache-2.0 · local DataHub Docker for judge demos.
+Requester agents search DataHub and miss in separate contexts. Nullspace turns
+those misses into demand on one shared ghost. At the threshold, a real builder
+agent reads the board over MCP, chooses what to build, explains why, discovers a
+warehouse source through DataHub, writes executable dbt SQL from the registered
+queries, and claims the ghost. When it goes solid, DataHub shows its schema,
+upstream lineage, resolution history, and the requester agents as native Owners.
 
-## Purpose
-
-The concept forge is complete. **Join Treaty** is the locked winner:
-
-> Mine the equality joins teams repeat in DataHub's query history, verify each
-> one against schema and column profiles, and write it back as a native ER model
-> relationship — the join graph that lineage never captures.
-
-Read the [final ranking](docs/final-ranking.md) and locked
-[build brief](docs/build-brief.md).
+Built for [Build with DataHub: The Agent Hackathon](https://datahub.devpost.com/)
+· deadline Mon 10 Aug 2026, 5pm EDT · Apache-2.0.
 
 ## One-command local substrate
 
@@ -44,68 +41,56 @@ bash scripts/query-seeded-entity.sh
 Stop the stack with `docker compose down`; add `--volumes` for a completely
 clean reset.
 
-Python tooling and the Join Treaty app are installed by:
+Install the Python tooling:
 
 ```bash
 bash scripts/install-deps.sh
 ```
 
-## Join Treaty demo (< 3 minutes)
+## Cold reveal (&lt; 3 minutes)
 
-With the substrate running (`docker compose up`) and deps installed, the whole
-mine → validate → native write → proof loop is four commands:
+From a clean clone:
 
 ```bash
 # Prerequisites: Docker Desktop, Docker Compose v2, Python 3.11+
 bash scripts/install-deps.sh
-./scripts/up.sh          # repository DataHub stack + seeded warehouse
-python3 scripts/moonshot_demo.py
-# three real MCP requester agents → demanded schema → claim → dbt model → solid
+./scripts/up.sh
+NULLSPACE_STORE=/tmp/nullspace-eval-fresh.json \
+NULLSPACE_EVAL_WANT="fresh-nullspace-$(date +%s)" \
+python3 scripts/eval_nullspace.py --cold
 open http://localhost:8787
 ```
 
-The seeded warehouse and requester-agent names are disclosed demo data. DataHub
-is the witness: the demo reads the solid asset back and prints the returned
-schema metadata, upstream lineage, ownership, demand, and requesters.
-The schema is the union of fields the requester agents declared for their queued
-queries; after solidification, each query is checked against DataHub's returned
-schema and reports `RUNS` or the exact missing fields.
+The warehouse rows and requester-agent identities are disclosed demo data. The
+proof is not staged: the eval reads schema, lineage, ownership, demand, tags, and
+resolution history back from DataHub.
 
-- Offline artifact: [examples/join-treaty-receipt.json](examples/join-treaty-receipt.json)
-- Deterministic tests: `pytest app/tests`
-- Design + morning checklist: [docs/night-build-plan.md](docs/night-build-plan.md)
-- DataHub OSS V2 does not yet render ER relationships in its UI; the native
-  proof is the read-after-write plus the receipt in each dataset's Properties
-  tab (an honest platform gap, not a faked screenshot).
+## Watch the builder decide
 
-## Concept forge
+After requester agents have registered queries against open ghosts:
 
-| Folder | Owner |
-| --- | --- |
-| [concepts/grok](concepts/grok) | Grok concepts |
-| [concepts/gpt](concepts/gpt) | GPT concepts |
-| [concepts/third](concepts/third) | Competitive-whitespace pass |
+```bash
+python3 -m nullspace.builder
+```
 
-Rules and scoring: [docs/playbook.md](docs/playbook.md). Final ruling:
-[docs/final-ranking.md](docs/final-ranking.md). Agent instructions:
-[AGENTS.md](AGENTS.md).
+The builder connects as an MCP client, calls `open_demand`, chooses the highest
+independent demand (oldest demand breaks ties), states its reason, reads the
+registered queries, discovers a real warehouse source from DataHub, and prints
+the executable dbt SQL it generated. With demand below threshold it visibly
+declines and names the exact shortfall.
 
-## Constraints (hard)
+## What is visible in DataHub
 
-- ~2 build days after concept lock; agents write the code
-- Stranger demos from README in &lt;3 minutes
-- Live URL + &lt;3-min video + Apache-2.0 public repo
-- DataHub local Docker — judges cannot reach a private instance
+- schema fields requested before the asset existed
+- upstream lineage to the warehouse table read by the generated model
+- requester agents in the native Owners panel
+- demand, claim, and resolution history in dataset properties
 
-## Cloud agents
+## Honest boundary
 
-`.cursor/environment.json` builds a Docker-capable image and installs DataHub tooling on each Build. Docker starts with the environment; run `scripts/setup-datahub.sh` when a live catalog is needed.
-
-## Status
-
-**Ideation closed. Join Treaty MVP built on the substrate: deterministic
-mining, native `ERModelRelationship` write-back, dataset receipts, web view,
-and tests.**
+`dbt_project/` has no GitHub remote. `pr_url` is therefore a `file://` local
+change reference, **not a pull request**. Nullspace does not claim a PR until an
+open GitHub PR exists.
 
 ## License
 
