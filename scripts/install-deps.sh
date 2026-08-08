@@ -20,6 +20,7 @@ echo "==> DataHub CLI + Agent Context Kit"
   "acryl-datahub" \
   "datahub-agent-context" \
   "mcp>=2.0.0" \
+  "psycopg[binary]" \
   "httpx" \
   "pydantic" \
   "python-dotenv" \

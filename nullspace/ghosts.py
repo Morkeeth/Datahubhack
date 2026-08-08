@@ -188,6 +188,33 @@ class Nullspace:
             self.store.save(ghost)
             return ghost
 
+    def record_resolution(
+        self,
+        want: str,
+        *,
+        agent_id: str,
+        event: str,
+        detail: str,
+    ) -> Ghost:
+        """Bind builder proof or refusal to the ghost and mirror it to DataHub."""
+        with self.store.transaction():
+            ghost = self.store.get(want)
+            if ghost is None:
+                raise ValueError(
+                    f"resolution refused: no ghost exists for demand {want!r}"
+                )
+            ghost.resolution.append(
+                ResolutionEvent(
+                    agent_id=agent_id,
+                    at_ms=now_ms(),
+                    event=event,
+                    detail=detail,
+                )
+            )
+            self._mirror(ghost)
+            self.store.save(ghost)
+            return ghost
+
     def solidify(
         self,
         want: str,

@@ -37,6 +37,10 @@ class Settings:
             "local-warehouse.warehouse.ecommerce.revenue_events,DEV)"
         ),
     )
+    warehouse_dsn: str = os.getenv(
+        "NULLSPACE_WAREHOUSE_DSN",
+        "postgresql://agent:agent@localhost:5432/warehouse",
+    )
 
 
 def settings() -> Settings:

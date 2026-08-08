@@ -3,8 +3,8 @@
 > The single source of truth for where this project is **right now**. If you only
 > open one file, open this one. Every agent updates it at the end of its turn.
 
-- **Last updated:** 2026-08-08 22:34 UTC by Cursor build agent (`bc-9950b172`)
-- **Phase:** **Real builder-agent decision verified end-to-end.**
+- **Last updated:** 2026-08-08 22:38 UTC by Cursor build agent (`bc-9950b172`)
+- **Phase:** **Builder decision + executable-SQL proof + replay receipt verified.**
 - **Deadline:** Mon 10 Aug 2026, 17:00 EDT / **23:00 Paris**
 - **Worker branch:** `cursor/datahub-hack-setup-4c9d` · repo `Morkeeth/nullspace`
 
@@ -37,6 +37,18 @@ warehouse source from DataHub, and prints executable dbt SQL. Verified both ways
 demand 2/3 visibly declined with a shortfall; demand 3/3 chose, generated SQL,
 claimed, and went solid.
 
+The builder now gates solidification on the warehouse, not code confidence:
+Postgres `EXPLAIN` plus a five-row sample must return every demanded field. The
+proof is bound into DataHub resolution history as `sql_validated`. Verified:
+source `ecommerce.revenue_events`, four returned columns, 3 sample rows,
+`Seq Scan`. Review replay:
+`python3 -m nullspace.builder --review /tmp/nullspace-builder-receipt.json`
+returned `datahub_still_matches: true`.
+
+Failure path also proven: generated SQL naming `missing_column` was refused by
+Postgres, the ghost stayed `claimed` (never solid), and DataHub returned the
+bound `sql_validation_failed` event with the exact `UndefinedColumn` reason.
+
 ## THE ONE OPEN DECISION
 
 > **Does `dbt_project` get a public GitHub remote?** (D9)
@@ -68,6 +80,9 @@ Everything else in Phase 1 proceeds without it.
 | native ownership | 3 Owners: `revenue-copilot-1.0.0`, `finance-agent-2.3.1`, `board-deck-writer-0.9.0`; type `nullspace_requester` |
 | contract payoff | `3 running, 0 blocked`; schema read back from DataHub |
 | builder decision | chose highest demand (3/3), generated SQL from 3 query contracts and DataHub source |
+| SQL execution proof | `EXPLAIN` passed; 4 demanded columns returned; 3 real rows sampled |
+| SQL failure proof | invalid column refused; state remained `claimed`; DataHub history names failure |
+| review replay | saved decision/SQL/proof; DataHub re-read still matched exactly |
 | decline path | `demand 2 of 3; 1 more requester agent must ask` |
 | PR | **still false**: `file:///workspace/dbt_project#...`; no remote |
 | fresh-clone acceptance | volumes/store wiped; README-only path `101s`; `16 passed, 0 failed, 1 pending` (D9 only) |
@@ -81,7 +96,7 @@ stress reached 20/20.
 - **Oscar:** rule D9 (public remote for `dbt_project` / `Morkeeth/nullspace-dbt`).
 - **Oscar:** create/fork `Morkeeth/datahub` if the upstream OSS PR remains required;
   this agent has no upstream write permission and no fork exists.
-- **Cursor build agent:** finish fresh-clone timing, then hand back the trunk.
+- **Cursor build agent:** complete; hand back SQL-proof receipt and trunk.
 - **Claude Lane B:** rebase onto Cursor; make acceptance eval rerunnable (current
   fixed demand finds yesterday's solid asset on a second run), then board reveal
   and submission package. Do not overwrite Lane A files.

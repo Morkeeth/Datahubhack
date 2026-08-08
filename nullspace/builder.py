@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+import argparse
 import asyncio
 import json
 import os
+import re
 import subprocess
 import sys
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, replace
 from pathlib import Path
 from typing import Any
 
@@ -38,6 +40,9 @@ SOLID_SCHEMA_FIELDS = [
 _PLAN_STORE = Path(
     os.getenv("NULLSPACE_BUILDER_PLANS", "/tmp/nullspace-builder-plans.json")
 )
+_RECEIPT_PATH = Path(
+    os.getenv("NULLSPACE_BUILDER_RECEIPT", "/tmp/nullspace-builder-receipt.json")
+)
 
 @dataclass(frozen=True)
 class BuildPlan:
@@ -48,6 +53,7 @@ class BuildPlan:
     source_schema: str
     source_table: str
     decision_reason: str
+    validation: dict[str, Any] | None = None
 
 
 def _plan_key(want: str) -> str:
@@ -88,6 +94,12 @@ def _source_parts(urn: str) -> tuple[str, str]:
         raise ValueError(f"builder refused: cannot parse source dataset URN {urn!r}") from exc
 
 
+def _identifier(value: str) -> str:
+    if not re.fullmatch(r"[a-z_][a-z0-9_]*", value):
+        raise ValueError(f"builder refused: unsafe SQL identifier {value!r}")
+    return value
+
+
 def generate_model_sql(
     *,
     want: str,
@@ -97,7 +109,10 @@ def generate_model_sql(
     source_table: str,
 ) -> str:
     """Compile executable SQL from the fields in the registered requester queries."""
-    projections = ",\n".join(f'    "{field["name"]}"' for field in fields)
+    source_table = _identifier(source_table)
+    projections = ",\n".join(
+        f'    "{_identifier(str(field["name"]))}"' for field in fields
+    )
     return (
         f"-- Nullspace builder-agent output for demand: {want}\n"
         f"-- Requesters: {', '.join(requesters)}\n"
@@ -107,6 +122,53 @@ def generate_model_sql(
         f"{projections}\n"
         f"from {{{{ source('warehouse_source', '{source_table}') }}}}\n"
     )
+
+
+def validate_model_sql(
+    plan: BuildPlan, *, rendered_sql: str | None = None
+) -> dict[str, Any]:
+    """EXPLAIN and sample the generated model against the real warehouse."""
+    import psycopg
+
+    schema = _identifier(plan.source_schema)
+    table = _identifier(plan.source_table)
+    relation = f'"{schema}"."{table}"'
+    macro = "{{ source('warehouse_source', '" + table + "') }}"
+    executable_sql = (rendered_sql or plan.model_sql).replace(
+        macro, relation
+    ).strip().rstrip(";")
+    if "{{" in executable_sql or "}}" in executable_sql:
+        raise ValueError(
+            "build refused: generated SQL contains unresolved dbt macros; "
+            "shortfall is 1 executable model"
+        )
+
+    with psycopg.connect(settings().warehouse_dsn) as connection:
+        with connection.cursor() as cursor:
+            cursor.execute("EXPLAIN (FORMAT JSON) " + executable_sql)
+            explain = cursor.fetchone()
+            cursor.execute(
+                "SELECT * FROM (" + executable_sql + ") AS nullspace_validation LIMIT 5"
+            )
+            sample = cursor.fetchall()
+            columns = [column.name for column in cursor.description or []]
+        connection.rollback()
+
+    expected = [str(field["name"]) for field in plan.fields]
+    missing = [field for field in expected if field not in columns]
+    if missing:
+        raise ValueError(
+            f"build refused: warehouse returned columns {columns}; "
+            f"shortfall is {len(missing)} demanded fields {missing}"
+        )
+    plan_root = explain[0][0]["Plan"] if explain else {}
+    return {
+        "status": "passed",
+        "source_relation": f"{schema}.{table}",
+        "returned_columns": columns,
+        "sample_row_count": len(sample),
+        "explain_node": plan_root.get("Node Type"),
+    }
 
 
 def plan_for_demand(want: str) -> BuildPlan:
@@ -232,6 +294,30 @@ def build_and_solidify(ns: Nullspace, want: str, *, builder_id: str = "builder-1
 
     ghost = ns.claim(want, builder_id)
     path = write_dbt_model(ghost, repo, plan)
+    try:
+        validation = validate_model_sql(
+            plan, rendered_sql=path.read_text(encoding="utf-8")
+        )
+    except Exception as exc:
+        detail = f"{type(exc).__name__}: {str(exc)[:500]}"
+        ns.record_resolution(
+            want,
+            agent_id=builder_id,
+            event="sql_validation_failed",
+            detail=detail,
+        )
+        raise ValueError(
+            "build refused: generated SQL failed warehouse validation; "
+            f"shortfall is 1 executable model; {detail}"
+        ) from exc
+    plan = replace(plan, validation=validation)
+    save_agent_plan(want, plan)
+    ns.record_resolution(
+        want,
+        agent_id=builder_id,
+        event="sql_validated",
+        detail=json.dumps(validation, sort_keys=True),
+    )
     branch = f"nullspace/{ghost.dataset_name}"
     title = f"feat(nullspace): solidify {ghost.want}"
     pr_url = create_change_reference(repo, branch, title, path)
@@ -291,6 +377,73 @@ def _choose_ghost(board: dict[str, Any]) -> tuple[dict[str, Any] | None, str]:
         f"({demand}, threshold {threshold}); oldest demand breaks ties"
     )
     return choice, reason
+
+
+def _write_review_receipt(
+    *,
+    want: str,
+    reason: str,
+    plan: BuildPlan,
+    result: dict[str, Any],
+) -> str:
+    witness = DataHubClient().solid_witness(str(result["urn"]))
+    properties = witness.get("properties") or {}
+    receipt = {
+        "outcome": result.get("status"),
+        "want": want,
+        "urn": result.get("urn"),
+        "decision": reason,
+        "generated_sql": plan.model_sql,
+        "source_urn": plan.upstream_urn,
+        "sql_validation": plan.validation,
+        "datahub_returned": {
+            "state": properties.get("nullspace.state"),
+            "demand": properties.get("nullspace.demand"),
+            "requesters": properties.get("nullspace.requesters"),
+            "schemaMetadata": witness.get("schemaMetadata"),
+            "lineage": witness.get("lineage"),
+            "ownership": witness.get("ownership"),
+            "tags": witness.get("tags"),
+        },
+        "change_reference": result.get("pr_url"),
+        "honest_boundary": (
+            "file:// is a local change reference, not a pull request"
+            if str(result.get("pr_url", "")).startswith("file://")
+            else None
+        ),
+    }
+    _RECEIPT_PATH.parent.mkdir(parents=True, exist_ok=True)
+    temp = _RECEIPT_PATH.with_suffix(f".{os.getpid()}.tmp")
+    temp.write_text(json.dumps(receipt, indent=2), encoding="utf-8")
+    os.replace(temp, _RECEIPT_PATH)
+    return str(_RECEIPT_PATH)
+
+
+def review_receipt(path: Path) -> dict[str, Any]:
+    """Re-read DataHub and show whether the saved builder receipt still holds."""
+    receipt = json.loads(path.read_text(encoding="utf-8"))
+    returned_now = DataHubClient().solid_witness(str(receipt["urn"]))
+    recorded = receipt["datahub_returned"]
+    current_properties = returned_now.get("properties") or {}
+    current = {
+        "state": current_properties.get("nullspace.state"),
+        "demand": current_properties.get("nullspace.demand"),
+        "requesters": current_properties.get("nullspace.requesters"),
+        "schemaMetadata": returned_now.get("schemaMetadata"),
+        "lineage": returned_now.get("lineage"),
+        "ownership": returned_now.get("ownership"),
+        "tags": returned_now.get("tags"),
+    }
+    return {
+        "receipt": str(path),
+        "want": receipt["want"],
+        "decision": receipt["decision"],
+        "sql_validation": receipt["sql_validation"],
+        "datahub_still_matches": current == recorded,
+        "datahub_returned_now": current,
+        "generated_sql": receipt["generated_sql"],
+        "honest_boundary": receipt.get("honest_boundary"),
+    }
 
 
 async def run_builder_agent() -> dict[str, Any]:
@@ -368,10 +521,29 @@ async def run_builder_agent() -> dict[str, Any]:
         built["decision_reason"] = reason
         built["generated_sql"] = model_sql
         built["source_urn"] = source["urn"]
+        verified_plan = _load_agent_plan(want) or plan
+        built["sql_validation"] = verified_plan.validation
+        built["review_receipt"] = _write_review_receipt(
+            want=want,
+            reason=reason,
+            plan=verified_plan,
+            result=built,
+        )
         return built
 
 
 def main() -> None:
+    parser = argparse.ArgumentParser(description="Nullspace autonomous builder agent")
+    parser.add_argument(
+        "--review",
+        type=Path,
+        metavar="RECEIPT",
+        help="re-read DataHub and review a prior builder receipt",
+    )
+    args = parser.parse_args()
+    if args.review:
+        print(json.dumps(review_receipt(args.review), indent=2))
+        return
     result = asyncio.run(run_builder_agent())
     print("RESULT:")
     print(json.dumps(result, indent=2))

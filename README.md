@@ -79,6 +79,15 @@ registered queries, discovers a real warehouse source from DataHub, and prints
 the executable dbt SQL it generated. With demand below threshold it visibly
 declines and names the exact shortfall.
 
+Review the last successful decision against DataHub again:
+
+```bash
+python3 -m nullspace.builder --review /tmp/nullspace-builder-receipt.json
+```
+
+The receipt includes the decision, generated SQL, warehouse `EXPLAIN` proof,
+source URN, and DataHub's current schema, lineage, ownership, tags, and demand.
+
 ## What is visible in DataHub
 
 - schema fields requested before the asset existed

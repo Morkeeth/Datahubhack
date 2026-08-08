@@ -96,3 +96,5 @@ npx -y @acryldata/mcp-server-datahub
 2. Keep the causal chain: miss → demand → builder decision → claim → solid.
 3. Persist native DataHub metadata and prove it via read-after-write.
 4. Keep the README-to-reveal path under three minutes.
+5. Review the last builder run with
+   `python3 -m nullspace.builder --review /tmp/nullspace-builder-receipt.json`.
