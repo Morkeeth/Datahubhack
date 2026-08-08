@@ -6,7 +6,7 @@
 - **Last updated:** 2026-08-08 ~22:5x UTC by Cursor cloud agent (`bc-9950b172`)
 - **Phase:** **Concept DECIDED — Nullspace. Build agent READY; Phase 0 in progress.**
 - **Deadline:** Mon 10 Aug 2026, 17:00 EDT / **23:00 Paris**
-- **Worker branch:** `cursor/cloud-agent-1786222076726-0ylmh` · repo `morkeeth/datahubhack`
+- **Worker branch:** `cursor/cloud-agent-1786222076726-0ylmh` · repo `Morkeeth/nullspace`
 
 ## You are here
 
