@@ -1,4 +1,4 @@
-"""Builder agent: claim a ready ghost → write dbt model → open PR → solidify."""
+"""Builder agent: claim a ready ghost → write dbt model → change reference → solidify."""
 
 from __future__ import annotations
 
@@ -7,7 +7,6 @@ from pathlib import Path
 
 from nullspace.config import settings
 from nullspace.ghosts import Ghost, Nullspace
-
 
 DBT_MODEL = '''-- Nullspace-generated model for demand: {want}
 -- Requesters: {requesters}
@@ -33,16 +32,23 @@ group by 1
 
 
 STG_MODEL = '''-- Seed staging model so the generated model can ref something real in CI/demo.
-select
-    '2026-q1'::varchar as cohort_id,
-    '2026-01-01'::timestamp as trial_started_at,
-    '2026-01-20'::timestamp as converted_at
-union all
-select
-    '2026-q1',
-    '2026-01-03'::timestamp,
-    null::timestamp
+select * from {{{{ source('ecommerce', 'trials') }}}}
 '''
+
+SOURCES_YML = """version: 2
+sources:
+  - name: ecommerce
+    schema: ecommerce
+    tables:
+      - name: trials
+"""
+
+SOLID_SCHEMA_FIELDS = [
+    {"name": "cohort_id", "native_type": "VARCHAR", "nullable": False},
+    {"name": "trials", "native_type": "BIGINT", "nullable": False},
+    {"name": "conversions", "native_type": "BIGINT", "nullable": False},
+    {"name": "trial_to_paid_rate", "native_type": "DOUBLE", "nullable": True},
+]
 
 
 def write_dbt_model(ghost: Ghost, repo: Path) -> Path:
@@ -51,6 +57,9 @@ def write_dbt_model(ghost: Ghost, repo: Path) -> Path:
     stg = models / "stg_trials.sql"
     if not stg.exists():
         stg.write_text(STG_MODEL, encoding="utf-8")
+    sources = models / "sources.yml"
+    if not sources.exists():
+        sources.write_text(SOURCES_YML, encoding="utf-8")
     out = models / f"{ghost.dataset_name}.sql"
     out.write_text(
         DBT_MODEL.format(
@@ -63,11 +72,22 @@ def write_dbt_model(ghost: Ghost, repo: Path) -> Path:
     return out
 
 
-def open_local_pr(repo: Path, branch: str, title: str) -> str:
-    """Create a local branch + commit. Returns a file:// PR surrogate or gh URL."""
+def create_change_reference(repo: Path, branch: str, title: str, model_path: Path) -> str:
+    """Commit explicit dbt files; return a real PR URL only when one exists."""
     subprocess.run(["git", "init"], cwd=repo, check=False, capture_output=True)
     subprocess.run(["git", "checkout", "-B", branch], cwd=repo, check=True, capture_output=True)
-    subprocess.run(["git", "add", "-A"], cwd=repo, check=True, capture_output=True)
+    explicit_paths = [
+        "dbt_project.yml",
+        "models/stg_trials.sql",
+        "models/sources.yml",
+        str(model_path.relative_to(repo)),
+    ]
+    subprocess.run(
+        ["git", "add", "--", *explicit_paths],
+        cwd=repo,
+        check=True,
+        capture_output=True,
+    )
     subprocess.run(
         ["git", "commit", "-m", title, "--allow-empty"],
         cwd=repo,
@@ -78,6 +98,7 @@ def open_local_pr(repo: Path, branch: str, title: str) -> str:
     remote = subprocess.run(
         ["git", "remote", "get-url", "origin"],
         cwd=repo,
+        check=False,
         capture_output=True,
         text=True,
     )
@@ -91,12 +112,13 @@ def open_local_pr(repo: Path, branch: str, title: str) -> str:
         pr = subprocess.run(
             ["gh", "pr", "create", "--title", title, "--body", title],
             cwd=repo,
+            check=False,
             capture_output=True,
             text=True,
         )
         if pr.returncode == 0 and pr.stdout.strip():
             return pr.stdout.strip().splitlines()[-1]
-    # Local surrogate that still proves a mergeable artifact exists
+    # Honest local change reference. This is not a pull request.
     return f"file://{repo.resolve()}#{branch}"
 
 
@@ -114,12 +136,11 @@ def build_and_solidify(ns: Nullspace, want: str, *, builder_id: str = "builder-1
     ghost = ns.claim(want, builder_id)
     path = write_dbt_model(ghost, repo)
     branch = f"nullspace/{ghost.dataset_name}"
-    title = f"feat(nullspace): materialize {ghost.want}"
-    pr_url = open_local_pr(repo, branch, title)
+    title = f"feat(nullspace): solidify {ghost.want}"
+    pr_url = create_change_reference(repo, branch, title, path)
     ns.attach_pr(want, pr_url)
-    # Demo treats successful PR open as merge for the solidify beat;
-    # a hosted run can swap this for a real merge webhook later.
     return ns.solidify(
         want,
-        schema_fields=["cohort_id", "trials", "conversions", "trial_to_paid_rate"],
+        schema_fields=SOLID_SCHEMA_FIELDS,
+        upstream_urns=[cfg.warehouse_source_urn],
     )

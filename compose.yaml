@@ -1,4 +1,4 @@
-name: datahub-hack
+name: nullspace
 
 # A self-contained local substrate: DataHub OSS, a writable warehouse, and
 # metadata ingestion. From a clean clone, `docker compose up` is the only
@@ -8,8 +8,8 @@ x-datahub-storage: &datahub-storage
   DATAHUB_GMS_BASE_PATH: /
   DATAHUB_GMS_HOST: datahub-gms
   DATAHUB_GMS_PORT: "8080"
-  DATAHUB_TOKEN_SERVICE_SALT: 2b15f8d745c04853904f0f3312e5f1ab
-  DATAHUB_TOKEN_SERVICE_SIGNING_KEY: 8f041cebbb464f5da3a33c9a72f32826601519f588ca413ab82b2261d1e93628
+  DATAHUB_TOKEN_SERVICE_SALT: ${DATAHUB_TOKEN_SERVICE_SALT:-nullspace-local-demo-salt}
+  DATAHUB_TOKEN_SERVICE_SIGNING_KEY: ${DATAHUB_TOKEN_SERVICE_SIGNING_KEY:-nullspace-local-demo-signing-key-change-me}
   EBEAN_DATASOURCE_DRIVER: com.mysql.jdbc.Driver
   EBEAN_DATASOURCE_HOST: mysql:3306
   EBEAN_DATASOURCE_PASSWORD: datahub
@@ -190,7 +190,7 @@ services:
       DATAHUB_GMS_HOST: datahub-gms
       DATAHUB_GMS_PORT: "8080"
       DATAHUB_PLAY_MEM_BUFFER_SIZE: 10MB
-      DATAHUB_SECRET: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
+      DATAHUB_SECRET: ${DATAHUB_SECRET:-nullspace-local-demo-frontend-secret-change-me}
       DATAHUB_TRACKING_TOPIC: DataHubUsageEvent_v1
       FRONTEND_GRACEFUL_SHUTDOWN_ENABLED: "false"
       JAVA_OPTS: >-

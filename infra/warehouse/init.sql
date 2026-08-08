@@ -29,6 +29,13 @@ CREATE TABLE ecommerce.order_items (
     PRIMARY KEY (order_id, product_id)
 );
 
+CREATE TABLE ecommerce.trials (
+    trial_id BIGINT PRIMARY KEY,
+    cohort_id TEXT NOT NULL,
+    trial_started_at TIMESTAMPTZ NOT NULL,
+    converted_at TIMESTAMPTZ
+);
+
 INSERT INTO ecommerce.customers (customer_id, email, country_code, created_at)
 VALUES
     (101, 'ada@example.com', 'GB', '2026-08-01T09:00:00Z'),
@@ -54,6 +61,14 @@ VALUES
     (1002, 502, 1, 29.00),
     (1003, 503, 3, 9.50);
 
+INSERT INTO ecommerce.trials (
+    trial_id, cohort_id, trial_started_at, converted_at
+)
+VALUES
+    (2001, '2026-q1', '2026-01-01T09:00:00Z', '2026-01-20T14:00:00Z'),
+    (2002, '2026-q1', '2026-01-03T10:00:00Z', NULL),
+    (2003, '2026-q2', '2026-04-02T12:00:00Z', '2026-04-10T08:30:00Z');
+
 CREATE VIEW ecommerce.customer_order_summary AS
 SELECT
     c.customer_id,
@@ -71,3 +86,5 @@ COMMENT ON TABLE ecommerce.customers IS
     'Customer accounts used by the local development substrate.';
 COMMENT ON TABLE ecommerce.orders IS
     'Customer orders with enforced customer relationships.';
+COMMENT ON TABLE ecommerce.trials IS
+    'Disclosed demo trials used by the Nullspace dbt solidification flow.';
