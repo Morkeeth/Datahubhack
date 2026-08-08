@@ -19,7 +19,7 @@ echo "==> DataHub CLI + Agent Context Kit"
 "$PY" -m pip install --user --upgrade \
   "acryl-datahub" \
   "datahub-agent-context" \
-  "datahub-agent-context[langchain]" \
+  "mcp>=2.0.0" \
   "httpx" \
   "pydantic" \
   "python-dotenv" \

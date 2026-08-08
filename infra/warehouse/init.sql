@@ -36,6 +36,14 @@ CREATE TABLE ecommerce.trials (
     converted_at TIMESTAMPTZ
 );
 
+CREATE TABLE ecommerce.revenue_events (
+    event_id BIGINT PRIMARY KEY,
+    month TEXT NOT NULL,
+    segment TEXT NOT NULL,
+    mrr NUMERIC(14, 2) NOT NULL,
+    churned_mrr NUMERIC(14, 2) NOT NULL DEFAULT 0
+);
+
 INSERT INTO ecommerce.customers (customer_id, email, country_code, created_at)
 VALUES
     (101, 'ada@example.com', 'GB', '2026-08-01T09:00:00Z'),
@@ -69,6 +77,12 @@ VALUES
     (2002, '2026-q1', '2026-01-03T10:00:00Z', NULL),
     (2003, '2026-q2', '2026-04-02T12:00:00Z', '2026-04-10T08:30:00Z');
 
+INSERT INTO ecommerce.revenue_events (event_id, month, segment, mrr, churned_mrr)
+VALUES
+    (3001, '2026-08', 'startup', 12500.00, 500.00),
+    (3002, '2026-08', 'scaleup', 32000.00, 1200.00),
+    (3003, '2026-08', 'enterprise', 68000.00, 2500.00);
+
 CREATE VIEW ecommerce.customer_order_summary AS
 SELECT
     c.customer_id,
@@ -88,3 +102,5 @@ COMMENT ON TABLE ecommerce.orders IS
     'Customer orders with enforced customer relationships.';
 COMMENT ON TABLE ecommerce.trials IS
     'Disclosed demo trials used by the Nullspace dbt solidification flow.';
+COMMENT ON TABLE ecommerce.revenue_events IS
+    'Disclosed demo revenue events used by requester-derived ghost contracts.';

@@ -54,13 +54,17 @@ bash scripts/install-deps.sh
 # Prerequisites: Docker Desktop, Docker Compose v2, Python 3.11+
 bash scripts/install-deps.sh
 ./scripts/up.sh          # repository DataHub stack + seeded warehouse
-./scripts/demo.sh        # requester misses → demand=3 → claim → local dbt model → solid
+python3 scripts/moonshot_demo.py
+# three real MCP requester agents → demanded schema → claim → dbt model → solid
 open http://localhost:8787
 ```
 
 The seeded warehouse and requester-agent names are disclosed demo data. DataHub
 is the witness: the demo reads the solid asset back and prints the returned
 schema metadata, upstream lineage, ownership, demand, and requesters.
+The schema is the union of fields the requester agents declared for their queued
+queries; after solidification, each query is checked against DataHub's returned
+schema and reports `RUNS` or the exact missing fields.
 
 `dbt_project/` currently has no GitHub remote. The builder therefore produces a
 local branch and `file://` reference, **not a pull request**. A real PR is not

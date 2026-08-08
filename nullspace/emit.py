@@ -57,6 +57,7 @@ def emit_ghost(dh: DataHubClient, ghost: Ghost) -> dict[str, Any]:
         "nullspace.requesters": ",".join(ghost.requesters),
         "nullspace.claimed_by": ghost.claimed_by or "",
         "nullspace.pr_url": ghost.pr_url or "",
+        "nullspace.schema_source": ghost.schema_source or "",
         "nullspace.resolution": json.dumps(
             [
                 {
@@ -99,6 +100,19 @@ def emit_ghost(dh: DataHubClient, ghost: Ghost) -> dict[str, Any]:
     witness = dh.solid_witness(ghost.urn)
     if ghost.state == "solid":
         _verify_solid_witness(ghost, witness)
+        indexed_upstreams = dh.wait_for_indexed_upstreams(
+            ghost.urn, set(ghost.upstream_urns)
+        )
+        witness["indexedLineage"] = {
+            "upstreams": sorted(indexed_upstreams),
+            "count": len(indexed_upstreams),
+        }
+        if not set(ghost.upstream_urns).issubset(indexed_upstreams):
+            raise RuntimeError(
+                "DataHub lineage index read-after-write failed: "
+                f"returned {sorted(indexed_upstreams)}, "
+                f"expected {sorted(ghost.upstream_urns)}"
+            )
     return witness
 
 

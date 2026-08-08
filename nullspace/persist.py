@@ -5,6 +5,9 @@ from __future__ import annotations
 import json
 import os
 import tempfile
+from collections.abc import Iterator
+from contextlib import contextmanager
+from fcntl import LOCK_EX, LOCK_UN, flock
 from pathlib import Path
 
 from nullspace.ghosts import Ghost, MemoryGhostStore, ResolutionEvent
@@ -21,6 +24,7 @@ class FileGhostStore(MemoryGhostStore):
         self._load()
 
     def _load(self) -> None:
+        self._by_want = {}
         if not self.path.exists():
             return
         raw = json.loads(self.path.read_text(encoding="utf-8"))
@@ -36,11 +40,26 @@ class FileGhostStore(MemoryGhostStore):
                 claimed_by=item.get("claimed_by"),
                 schema_fields=list(item.get("schema_fields") or []),
                 upstream_urns=list(item.get("upstream_urns") or []),
+                schema_source=item.get("schema_source"),
                 resolution=[
                     ResolutionEvent(**e) for e in (item.get("resolution") or [])
                 ],
             )
             self._by_want[g.want.strip().lower()] = g
+
+    @contextmanager
+    def transaction(self) -> Iterator[None]:
+        """Serialize complete read→DataHub write→file save operations."""
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        lock_path = self.path.with_suffix(f"{self.path.suffix}.lock")
+        with lock_path.open("a+") as lock:
+            flock(lock.fileno(), LOCK_EX)
+            try:
+                # Another requester process may have committed while this one waited.
+                self._load()
+                yield
+            finally:
+                flock(lock.fileno(), LOCK_UN)
 
     def save(self, ghost: Ghost) -> None:
         super().save(ghost)
@@ -64,4 +83,6 @@ class FileGhostStore(MemoryGhostStore):
                 for g in self.list_ghosts()
             ]
         }
-        self.path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+        tmp = self.path.with_suffix(f"{self.path.suffix}.{os.getpid()}.tmp")
+        tmp.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+        os.replace(tmp, self.path)
