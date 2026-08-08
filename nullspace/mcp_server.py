@@ -27,6 +27,7 @@ from typing import Any
 
 from mcp.server.mcpserver import Context, MCPServer
 
+from nullspace.agents.contracts import ContractStore, RegisteredQuery, infer_fields
 from nullspace.builder import build_and_solidify
 from nullspace.client import DataHubClient
 from nullspace.config import settings
@@ -200,6 +201,100 @@ def claim_and_build(want: str, ctx: Context) -> dict[str, Any]:
     out["identified_by"] = how
     out["builder_urn"] = corpuser_urn(builder_id)
     return out
+
+
+@server.tool(
+    description=(
+        "Register the query you meant to run against an asset that does not exist "
+        "yet, and the columns it needs. You will be told when it runs. The columns "
+        "real agents ask for become the schema the builder agent has to deliver."
+    )
+)
+def register_query(
+    want: str, sql: str, ctx: Context, needs_fields: list[str] | None = None
+) -> dict[str, Any]:
+    agent_id, how = _identify(ctx)
+    ns = _ns()
+
+    ghost = ns.store.get(want)
+    if ghost is None:
+        return {
+            "status": "refused",
+            "reason": (
+                f"no ghost exists for {want!r} — call find_dataset first so the "
+                "demand is recorded"
+            ),
+            "agent_id": agent_id,
+            "identified_by": how,
+        }
+
+    if needs_fields:
+        fields, how_fields = list(needs_fields), "declared by the agent"
+    else:
+        fields, how_fields = infer_fields(sql)
+
+    store = ContractStore()
+    store.register(
+        RegisteredQuery(agent_id=agent_id, want=want, sql=sql, needs_fields=fields)
+    )
+    demanded = store.demanded_schema(want)
+    return {
+        "status": "registered",
+        "agent_id": agent_id,
+        "identified_by": how,
+        "want": want,
+        "urn": ghost.urn,
+        "needs_fields": fields,
+        "fields_determined_by": how_fields,
+        "demanded_schema": demanded,
+        "note": (
+            "This is the union of columns every requesting agent asked for. It is "
+            "the contract the builder agent has to satisfy."
+        ),
+        "queries_registered": len(store.queries(want)),
+    }
+
+
+@server.tool(
+    description=(
+        "Has my query started working? Compares every registered query against the "
+        "schema DataHub actually returns for the asset, and names the missing "
+        "columns for any that cannot run yet."
+    )
+)
+def contract_status(want: str) -> dict[str, Any]:
+    ns = _ns()
+    store = ContractStore()
+    ghost = ns.store.get(want)
+    if ghost is None:
+        return {
+            "status": "unknown",
+            "reason": f"no ghost for {want!r}",
+            "demanded_schema": store.demanded_schema(want),
+        }
+
+    actual: list[str] = []
+    live = _live()
+    schema_source = "DataHub returned no schemaMetadata for this asset yet"
+    if live is not None:
+        aspect = live.get_aspect(ghost.urn, "schemaMetadata") or {}
+        for f in aspect.get("fields", []) or []:
+            path = f.get("fieldPath") if isinstance(f, dict) else None
+            if path:
+                actual.append(path)
+        if actual:
+            schema_source = "read back from DataHub schemaMetadata"
+
+    settled = store.settle(want, actual)
+    settled.update(
+        {
+            "urn": ghost.urn,
+            "ghost_state": ghost.state,
+            "demanded_schema": store.demanded_schema(want),
+            "schema_source": schema_source,
+        }
+    )
+    return settled
 
 
 def main() -> None:
