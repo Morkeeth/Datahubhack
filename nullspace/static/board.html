@@ -1,0 +1,127 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Nullspace</title>
+  <style>
+    :root {
+      --bg: #0c0f14;
+      --ink: #e8eef7;
+      --muted: #8b97a8;
+      --ghost: #5b6cff;
+      --solid: #3ddc97;
+      --claim: #f0b429;
+      --line: #1e2633;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0; min-height: 100vh;
+      font-family: "IBM Plex Sans", "Segoe UI", sans-serif;
+      background:
+        radial-gradient(1200px 600px at 10% -10%, #1a2240 0%, transparent 55%),
+        radial-gradient(900px 500px at 90% 0%, #12261f 0%, transparent 50%),
+        var(--bg);
+      color: var(--ink);
+    }
+    header {
+      padding: 2.5rem 1.5rem 1rem;
+      max-width: 960px; margin: 0 auto;
+    }
+    h1 {
+      font-family: "IBM Plex Serif", Georgia, serif;
+      font-weight: 500; font-size: clamp(2rem, 5vw, 3rem);
+      letter-spacing: -0.02em; margin: 0 0 0.4rem;
+    }
+    .sub { color: var(--muted); max-width: 40rem; line-height: 1.45; }
+    .stats {
+      display: flex; gap: 1rem; flex-wrap: wrap;
+      max-width: 960px; margin: 0 auto; padding: 0 1.5rem 1.5rem;
+    }
+    .stat {
+      border: 1px solid var(--line); border-radius: 12px;
+      padding: 0.75rem 1rem; min-width: 7rem;
+      background: rgba(255,255,255,0.02);
+    }
+    .stat b { display: block; font-size: 1.6rem; }
+    .stat span { color: var(--muted); font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.06em; }
+    main { max-width: 960px; margin: 0 auto; padding: 0 1.5rem 3rem; display: grid; gap: 1rem; }
+    .card {
+      border: 1px solid var(--line); border-radius: 16px; padding: 1.25rem 1.4rem;
+      background: rgba(12,15,20,0.7); backdrop-filter: blur(8px);
+      position: relative; overflow: hidden;
+    }
+    .card.ghost { box-shadow: inset 0 0 0 1px rgba(91,108,255,0.35); }
+    .card.ghost::before {
+      content: ""; position: absolute; inset: 0;
+      background: repeating-linear-gradient(
+        -45deg, transparent, transparent 8px, rgba(91,108,255,0.04) 8px, rgba(91,108,255,0.04) 16px
+      );
+      pointer-events: none;
+    }
+    .card.solid { box-shadow: inset 0 0 0 1px rgba(61,220,151,0.45); }
+    .card.claimed { box-shadow: inset 0 0 0 1px rgba(240,180,41,0.4); }
+    .row { display: flex; justify-content: space-between; gap: 1rem; align-items: baseline; }
+    .want { font-size: 1.25rem; font-weight: 560; }
+    .badge {
+      font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.08em;
+      padding: 0.25rem 0.55rem; border-radius: 999px; border: 1px solid;
+    }
+    .badge.ghost { color: var(--ghost); border-color: var(--ghost); }
+    .badge.solid { color: var(--solid); border-color: var(--solid); }
+    .badge.claimed { color: var(--claim); border-color: var(--claim); }
+    .meta { color: var(--muted); font-size: 0.9rem; margin-top: 0.6rem; line-height: 1.5; word-break: break-all; }
+    .demand {
+      font-variant-numeric: tabular-nums; font-size: 2rem; font-weight: 600;
+      color: var(--ghost); margin-top: 0.75rem;
+    }
+    .card.solid .demand { color: var(--solid); }
+    empty { display: block; color: var(--muted); padding: 2rem 0; }
+    a { color: #9db7ff; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Nullspace</h1>
+    <p class="sub">Demand-side metadata — catalog entries for data that does not exist yet. Ghosts accumulate agent demand; builders turn them solid.</p>
+  </header>
+  <div class="stats" id="stats"></div>
+  <main id="list"><empty>Waiting for consumer agents…</empty></main>
+  <script>
+    async function refresh() {
+      const res = await fetch('/api/board');
+      const data = await res.json();
+      const s = data.counts || {};
+      document.getElementById('stats').innerHTML = `
+        <div class="stat"><b>${s.ghost||0}</b><span>Ghost</span></div>
+        <div class="stat"><b>${s.claimed||0}</b><span>Claimed</span></div>
+        <div class="stat"><b>${s.solid||0}</b><span>Solid</span></div>`;
+      const list = document.getElementById('list');
+      const ghosts = data.ghosts || [];
+      if (!ghosts.length) {
+        list.innerHTML = '<empty>Waiting for consumer agents…</empty>';
+        return;
+      }
+      list.innerHTML = ghosts.map(g => `
+        <article class="card ${g.state}">
+          <div class="row">
+            <div class="want">${escapeHtml(g.want)}</div>
+            <span class="badge ${g.state}">${g.state}</span>
+          </div>
+          <div class="demand">demand ${g.demand}</div>
+          <div class="meta">
+            URN <code>${escapeHtml(g.urn)}</code><br/>
+            Requesters: ${g.requesters.map(escapeHtml).join(', ') || '—'}
+            ${g.claimed_by ? `<br/>Claimed by: ${escapeHtml(g.claimed_by)}` : ''}
+            ${g.pr_url ? `<br/>PR: <a href="${escapeHtml(g.pr_url)}" target="_blank" rel="noreferrer">${escapeHtml(g.pr_url)}</a>` : ''}
+          </div>
+        </article>`).join('');
+    }
+    function escapeHtml(s) {
+      return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+    }
+    refresh();
+    setInterval(refresh, 1500);
+  </script>
+</body>
+</html>
