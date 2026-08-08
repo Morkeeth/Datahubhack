@@ -10,11 +10,8 @@
 
 ## You are here
 
-**The A/B/C/D question is closed and none of its options won.** Oscar watched Join
-Treaty run — the board on `:3000`, the receipts in DataHub on `:9002` — and ruled
-*"a feature, not ambitious enough."* A subsequent proposal ("Half-Life") was rejected
-as a re-skin of his existing Mountain of Helicon work. **Oscar has committed to
-Nullspace.**
+Concept decided (D8: Nullspace). The pipeline runs against a live DataHub and every
+claim below was read back from the graph, not from a log line.
 
 **Lane A and Lane B now meet at the real payoff.** Three MCP requester agents
 registered three different queries. Lane A took the union of their declared
@@ -79,7 +76,7 @@ Concurrency witness: 10 simultaneous requester processes through live DataHub
 returned one deterministic ghost URN, `demand=10`, `unique_requesters=10`; offline
 stress reached 20/20.
 
-## Next action for each party (right now)
+## Next actions
 
 - **Oscar:** rule D9 (public remote for `dbt_project` / `Morkeeth/nullspace-dbt`).
 - **Oscar:** create/fork `Morkeeth/datahub` if the upstream OSS PR remains required;
@@ -89,7 +86,7 @@ stress reached 20/20.
   fixed demand finds yesterday's solid asset on a second run), then board reveal
   and submission package. Do not overwrite Lane A files.
 
-## Canonical docs (don't re-derive these)
+## Canonical docs
 
 - Build brief: **`docs/collab/handoffs/003-nullspace-roadmap.md`** ← start here
 - Ruling + the retracted scan: `docs/collab/rulings/002-nullspace-commit.md`
