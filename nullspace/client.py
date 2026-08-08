@@ -1,7 +1,7 @@
-"""Thin DataHub REST emitter + GraphQL reader.
+"""DataHub writer and witness reader for Nullspace.
 
-Uses the open REST `/entities?action=ingest` path via acryldata SDK when available,
-falling back to raw HTTP so a stranger with only httpx can still run the demo.
+Writes use the official DataHub SDK. Every product claim is read back from GMS;
+the return value from an emit call is never treated as proof.
 """
 
 from __future__ import annotations
@@ -11,6 +11,15 @@ import time
 from typing import Any
 
 import httpx
+from datahub.emitter.mcp import MetadataChangeProposalWrapper
+from datahub.ingestion.graph.client import DataHubGraph, DataHubGraphConfig
+from datahub.metadata.schema_classes import (
+    DatasetPropertiesClass,
+    GlobalTagsClass,
+    OwnershipClass,
+    SchemaMetadataClass,
+    UpstreamLineageClass,
+)
 
 from nullspace.config import Settings, settings
 
@@ -18,6 +27,7 @@ from nullspace.config import Settings, settings
 class DataHubClient:
     def __init__(self, cfg: Settings | None = None) -> None:
         self.cfg = cfg or settings()
+        self._graph: DataHubGraph | None = None
         self._headers = {"Content-Type": "application/json"}
         if self.cfg.token:
             self._headers["Authorization"] = f"Bearer {self.cfg.token}"
@@ -32,6 +42,14 @@ class DataHubClient:
             return r.status_code < 500
         except httpx.HTTPError:
             return False
+
+    @property
+    def graph(self) -> DataHubGraph:
+        if self._graph is None:
+            self._graph = DataHubGraph(
+                DataHubGraphConfig(server=self.gms, token=self.cfg.token)
+            )
+        return self._graph
 
     def search_datasets(self, query: str) -> list[dict[str, Any]]:
         """Return search hits. Empty list = miss (the Nullspace trigger)."""
@@ -106,57 +124,63 @@ class DataHubClient:
             return
         r.raise_for_status()
 
-    def get_aspect(self, urn: str, aspect: str) -> dict[str, Any] | None:
-        r = httpx.get(
-            f"{self.gms}/aspects/{httpx.URL(urn).raw_path}",
-            # use aspect get API
-            params={"aspect": aspect, "version": 0},
-            headers=self._headers,
-            timeout=30.0,
-        )
-        # Prefer GraphQL entity fetch — more stable across versions
-        return self._graphql_entity_properties(urn)
+    def emit_aspect(self, urn: str, aspect: Any) -> None:
+        """Write one native aspect through the official SDK."""
+        self.graph.emit(MetadataChangeProposalWrapper(entityUrn=urn, aspect=aspect))
 
-    def _graphql_entity_properties(self, urn: str) -> dict[str, Any] | None:
-        gql = {
-            "query": """
-            query($urn: String!) {
-              dataset(urn: $urn) {
-                urn
-                name
-                properties { name description }
-                tags { tags { tag { name urn } } }
-                customProperties: properties { customProperties { key value } }
-              }
-            }
-            """,
-            "variables": {"urn": urn},
+    def dataset_custom_properties(self, urn: str) -> dict[str, str]:
+        props = self.graph.get_aspect(urn, DatasetPropertiesClass)
+        if props and props.customProperties:
+            return dict(props.customProperties)
+        return {}
+
+    def solid_witness(self, urn: str) -> dict[str, Any]:
+        """Return exactly what GMS currently stores for the solid-asset claims."""
+        props = self.graph.get_aspect(urn, DatasetPropertiesClass)
+        tags_aspect = self.graph.get_aspect(urn, GlobalTagsClass)
+        schema = self.graph.get_aspect(urn, SchemaMetadataClass)
+        lineage = self.graph.get_aspect(urn, UpstreamLineageClass)
+        ownership = self.graph.get_aspect(urn, OwnershipClass)
+
+        fields = None
+        if schema is not None:
+            fields = [
+                {
+                    "fieldPath": field.fieldPath,
+                    "nativeDataType": field.nativeDataType,
+                    "nullable": field.nullable,
+                }
+                for field in schema.fields
+            ]
+
+        upstreams = []
+        if lineage is not None:
+            upstreams = [
+                {"dataset": upstream.dataset, "type": str(upstream.type)}
+                for upstream in lineage.upstreams
+            ]
+
+        owners = []
+        if ownership is not None:
+            owners = [
+                {
+                    "owner": owner.owner,
+                    "type": str(owner.type),
+                    "typeUrn": owner.typeUrn,
+                }
+                for owner in ownership.owners
+            ]
+
+        return {
+            "urn": urn,
+            "properties": dict(props.customProperties or {}) if props else None,
+            "tags": [
+                tag.tag for tag in (tags_aspect.tags if tags_aspect is not None else [])
+            ],
+            "schemaMetadata": None if fields is None else {"fields": fields},
+            "lineage": {"upstreams": upstreams, "count": len(upstreams)},
+            "ownership": {"owners": owners, "count": len(owners)},
         }
-        # Dataset properties shape varies; also try entityExists
-        r = httpx.post(
-            f"{self.gms}/api/graphql",
-            headers=self._headers,
-            json={
-                "query": "query($urn: String!) { entityExists(urn: $urn) }",
-                "variables": {"urn": urn},
-            },
-            timeout=30.0,
-        )
-        if r.status_code >= 400:
-            return None
-        data = r.json()
-        exists = (data.get("data") or {}).get("entityExists")
-        if not exists:
-            return None
-        # Fetch via get with aspects
-        r2 = httpx.get(
-            f"{self.gms}/entities/{urn}",
-            headers=self._headers,
-            timeout=30.0,
-        )
-        if r2.status_code >= 400:
-            return {"urn": urn, "exists": True}
-        return r2.json()
 
     def entity_exists(self, urn: str) -> bool:
         r = httpx.post(

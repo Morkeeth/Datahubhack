@@ -34,6 +34,8 @@ class FileGhostStore(MemoryGhostStore):
                 requesters=list(item.get("requesters") or []),
                 pr_url=item.get("pr_url"),
                 claimed_by=item.get("claimed_by"),
+                schema_fields=list(item.get("schema_fields") or []),
+                upstream_urns=list(item.get("upstream_urns") or []),
                 resolution=[
                     ResolutionEvent(**e) for e in (item.get("resolution") or [])
                 ],

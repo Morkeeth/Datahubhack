@@ -1,0 +1,10 @@
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Retired local-only DataHub demo values in pre-Nullspace history"
+regexes = [
+  '''2b15f8d745c04853904f0f3312e5f1ab''',
+  '''8f041cebbb464f5da3a33c9a72f32826601519f588ca413ab82b2261d1e93628''',
+  '''0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef''',
+]

@@ -23,6 +23,13 @@ class Settings:
     demo_asset_name: str = os.getenv(
         "NULLSPACE_DEMO_ASSET", "trial_to_paid_conversion_by_cohort"
     )
+    warehouse_source_urn: str = os.getenv(
+        "NULLSPACE_WAREHOUSE_SOURCE_URN",
+        (
+            "urn:li:dataset:(urn:li:dataPlatform:postgres,"
+            "local-warehouse.warehouse.ecommerce.trials,DEV)"
+        ),
+    )
 
 
 def settings() -> Settings:

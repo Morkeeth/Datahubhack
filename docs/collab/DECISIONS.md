@@ -17,6 +17,8 @@ Status values: `PROPOSED` · `DECIDED` · `OPEN` · `SUPERSEDED`.
 | D7 | 2026-08-08 | **The competitive scan behind `final-ranking.md` is retracted.** Devpost's gallery is unpublished; none of the named rivals return a hackathon result. Nullspace's 8/30 originality score has no source and must not be reused. UNVERIFIABLE, not disproven. | DECIDED | Claude (probe) | `rulings/002`, banner on `docs/final-ranking.md` |
 | D8 | 2026-08-08 | **Ship Nullspace.** Join Treaty rejected by Oscar after watching it run — *"a feature, not ambitious enough"*. "Half-Life" also rejected — *"this is mountain of helicon once again"*. Join Treaty's verified spine (read-after-write, idempotency, named gates, receipts) is **ported, not discarded**. | **DECIDED** | Oscar | `rulings/002`, `handoffs/003` |
 | D9 | 2026-08-08 | `dbt_project` needs a public GitHub remote or "opens a real PR" stays false | **OPEN — blocked on Oscar** | Claude | `handoffs/003` §7 |
+| D10 | 2026-08-08 | A ghost may go solid only with ≥1 schema field and ≥1 upstream warehouse asset; requester agents are written as native custom Owners (`nullspace_requester`). Every write is verified from GMS read-back. | **DECIDED & verified live** | Cursor Lane A | `nullspace/emit.py`, `nullspace/ghosts.py`; STATE witness |
+| D11 | 2026-08-08 | Local DataHub demo credentials stay overridable environment defaults; retired high-entropy local values are allowlisted only by exact value for history scanning. | **DECIDED & verified** | Cursor Lane A | `compose.yaml`, `.env.example`, `.gitleaks.toml` |
 
 ## Open items (not yet decisions)
 
