@@ -23,6 +23,7 @@ Status values: `PROPOSED` · `DECIDED` · `OPEN` · `SUPERSEDED`.
 | D13 | 2026-08-08 | Demand updates lock the complete read→DataHub write→atomic file-save transaction, so simultaneous requester processes cannot silently overwrite one another. | **DECIDED & stress-verified** | Cursor Lane A | `nullspace/persist.py`; live DataHub 10 processes → 1 ghost / demand 10; offline 20/20 |
 | D14 | 2026-08-08 | Solidify waits for both the native lineage aspect and DataHub's async lineage index (the UI/GraphQL witness). Direct-write success alone is not done. | **DECIDED & verified** | Cursor Lane A | cold eval: 16 pass / 0 fail / D9 only pending |
 | D15 | 2026-08-08 | Only the autonomous MCP builder may satisfy registered query contracts. It chooses from `open_demand`, states its reason, discovers a DataHub source, and generates executable SQL. A direct function call may use only the disclosed no-contract fallback. | **DECIDED & verified both ways** | Cursor build agent | `python3 -m nullspace.builder`; 2/3 decline + 3/3 solid receipts |
+| D16 | 2026-08-08 | The judge path is the README cold-clone sequence; setup is done only when volumes and stores are absent and DataHub returns the reveal in under three minutes. | **DECIDED & verified** | Cursor build agent | fresh clone → 16 pass / 0 fail / D9 pending in 101 seconds |
 
 ## Open items (not yet decisions)
 

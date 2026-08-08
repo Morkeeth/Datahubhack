@@ -13,7 +13,7 @@ else
 fi
 
 echo "==> Python toolchain ($PY)"
-"$PY" -m pip install --user --upgrade pip setuptools wheel
+"$PY" -m pip install --user --upgrade pip "setuptools<82" wheel
 
 echo "==> DataHub CLI + Agent Context Kit"
 "$PY" -m pip install --user --upgrade \

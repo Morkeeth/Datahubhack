@@ -3,7 +3,7 @@
 > The single source of truth for where this project is **right now**. If you only
 > open one file, open this one. Every agent updates it at the end of its turn.
 
-- **Last updated:** 2026-08-08 22:28 UTC by Cursor build agent (`bc-9950b172`)
+- **Last updated:** 2026-08-08 22:34 UTC by Cursor build agent (`bc-9950b172`)
 - **Phase:** **Real builder-agent decision verified end-to-end.**
 - **Deadline:** Mon 10 Aug 2026, 17:00 EDT / **23:00 Paris**
 - **Worker branch:** `cursor/datahub-hack-setup-4c9d` · repo `Morkeeth/nullspace`
@@ -70,7 +70,7 @@ Everything else in Phase 1 proceeds without it.
 | builder decision | chose highest demand (3/3), generated SQL from 3 query contracts and DataHub source |
 | decline path | `demand 2 of 3; 1 more requester agent must ask` |
 | PR | **still false**: `file:///workspace/dbt_project#...`; no remote |
-| cold acceptance | `16 passed, 0 failed, 1 pending` (D9 only), solid in 8s |
+| fresh-clone acceptance | volumes/store wiped; README-only path `101s`; `16 passed, 0 failed, 1 pending` (D9 only) |
 
 Concurrency witness: 10 simultaneous requester processes through live DataHub
 returned one deterministic ghost URN, `demand=10`, `unique_requesters=10`; offline
