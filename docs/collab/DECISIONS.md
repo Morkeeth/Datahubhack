@@ -12,8 +12,11 @@ Status values: `PROPOSED` · `DECIDED` · `OPEN` · `SUPERSEDED`.
 | D2 | 2026-08-07 | Winner recorded in scope contract with 5 must-have capabilities | DECIDED | Forge | `docs/build-brief.md` |
 | D3 | 2026-08-08 | Ship a **concept-neutral local substrate** (`docker compose up`: DataHub + real Postgres warehouse + ingestion) | DECIDED & built | Build agent | `compose.yaml`, `infra/` |
 | D4 | 2026-08-08 | Build **Join Treaty MVP** on the substrate (deterministic mine → validate → native ER write + receipts + read-after-write) | DECIDED & built, verified | Build agent | `app/join_treaty/`, PR #1 |
-| D5 | 2026-08-08 | **Product scope A/B/C/D** — is Join Treaty a feature, a product, or replaced? | **OPEN** — awaiting Claude ruling | — | `docs/final-pitch.md`, `handoffs/001` |
-| D6 | 2026-08-08 | "Nullspace platform" reframe | PROPOSED then **advised against** (crowded field; not yet decided — folded into D5 option D) | Competition scan + prior Claude ruling | see `docs/final-pitch.md` §2c |
+| D5 | 2026-08-08 | **Product scope A/B/C/D** — is Join Treaty a feature, a product, or replaced? | **SUPERSEDED by D8** — none of A/B/C/D chosen | — | `docs/final-pitch.md`, `handoffs/001`, `rulings/001` |
+| D6 | 2026-08-08 | "Nullspace platform" reframe | **SUPERSEDED by D7** — the "crowded field" evidence is unverifiable | Competition scan + prior Claude ruling | see `rulings/002` |
+| D7 | 2026-08-08 | **The competitive scan behind `final-ranking.md` is retracted.** Devpost's gallery is unpublished; none of the named rivals return a hackathon result. Nullspace's 8/30 originality score has no source and must not be reused. UNVERIFIABLE, not disproven. | DECIDED | Claude (probe) | `rulings/002`, banner on `docs/final-ranking.md` |
+| D8 | 2026-08-08 | **Ship Nullspace.** Join Treaty rejected by Oscar after watching it run — *"a feature, not ambitious enough"*. "Half-Life" also rejected — *"this is mountain of helicon once again"*. Join Treaty's verified spine (read-after-write, idempotency, named gates, receipts) is **ported, not discarded**. | **DECIDED** | Oscar | `rulings/002`, `handoffs/003` |
+| D9 | 2026-08-08 | `dbt_project` needs a public GitHub remote or "opens a real PR" stays false | **OPEN — blocked on Oscar** | Claude | `handoffs/003` §7 |
 
 ## Open items (not yet decisions)
 

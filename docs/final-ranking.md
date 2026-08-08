@@ -2,7 +2,29 @@
 
 Date: 2026-08-07
 
-Decision: **Join Treaty wins; Second Pair is the fallback. Ideation is closed.**
+> ## ⚠️ SUPERSEDED 2026-08-08 — read this before using anything below
+>
+> **The decision below is reversed. Oscar ruled for Nullspace on 2026-08-08.**
+> See `docs/collab/rulings/002-nullspace-commit.md` and the build brief at
+> `docs/collab/handoffs/003-nullspace-roadmap.md`.
+>
+> **The "Competitive reality" table below is retracted.** It is attributed to a
+> *"Public-entry scan conducted on 2026-08-07"*, but `datahub.devpost.com/project-gallery`
+> states *"The hackathon managers haven't published this gallery yet"* — there is no
+> public entry list, and search returns no DataHub-hackathon result for any of the
+> named rivals. The table is **UNVERIFIABLE, not disproven**: the field may be
+> crowded (2,865 registered), but it cannot be observed, so nothing can be scored
+> against it.
+>
+> **Therefore Nullspace's originality score of 8/30 — the single mark that dropped it
+> from 1st to 4th — has no source and must not be reused.** The ranking table below
+> is retained as history only.
+>
+> What survives, because it does not come from that table: all three reviewers
+> independently ranked Nullspace #1, and it collided with nothing.
+
+Decision: ~~**Join Treaty wins; Second Pair is the fallback.**~~ **REVERSED — see banner.**
+Ideation is closed (and stays closed).
 
 ## Inputs
 

@@ -3,52 +3,70 @@
 > The single source of truth for where this project is **right now**. If you only
 > open one file, open this one. Every agent updates it at the end of its turn.
 
-- **Last updated:** 2026-08-08 by Cursor build agent (`bc-8423daef`)
-- **Phase:** Concept locked; **product-scope decision OPEN**
-- **Deadline:** Mon 10 Aug 2026, 5:00pm EDT (~2 build days)
+- **Last updated:** 2026-08-08 ~23:3x Paris by Claude (Opus 5), terminal session
+- **Phase:** **Concept DECIDED — Nullspace. Build not started.**
+- **Deadline:** Mon 10 Aug 2026, 17:00 EDT / **23:00 Paris — ~46h**
 
 ## You are here
 
-We have a **working, verified** build (DataHub substrate + Join Treaty MVP). The
-open question is **not technical** — it's scope: is Join Treaty shipped as a sharp
-feature, grown into a real product, or replaced. That question is waiting on a
-**Claude ruling**.
+**The A/B/C/D question is closed and none of its options won.** Oscar watched Join
+Treaty run — the board on `:3000`, the receipts in DataHub on `:9002` — and ruled
+*"a feature, not ambitious enough."* A subsequent proposal ("Half-Life") was rejected
+as a re-skin of his existing Mountain of Helicon work. **Oscar has committed to
+Nullspace.**
+
+A probe then found that the competitive scan which had scored Nullspace 8/30 on
+originality **cannot have happened** — Devpost's project gallery is unpublished. See
+D7. That number must not be reused.
+
+**Nothing is blocked on Claude. The build agent is unblocked and should start.**
 
 ## THE ONE OPEN DECISION
 
-> **What do we ship: A (sharp feature, real evidence), B (Usage-to-Graph product),
-> C (pivot to Second Pair), or D (Nullspace platform)?**
+> **Does `dbt_project` get a public GitHub remote?** (D9)
 
-- Full context: `docs/final-pitch.md`
-- One-screen ask to paste into Claude: `docs/collab/handoffs/001-product-scope-ruling.md`
-- **Owner of next move:** **Claude** (adjudicate) → then **You** (approve) → then Cursor agent (build)
-- Recommended by the build agent: **B**, with **A** as the guaranteed floor. Not recommended: **D**.
+Until it does, the builder agent cannot open a real PR, and the README must not
+claim one. **Owner: Oscar.** Recommendation: create `Morkeeth/nullspace-dbt` public.
+Everything else in Phase 1 proceeds without it.
 
 ## Workstreams
 
 | # | Workstream | Status | Owner next | Pointer |
 |---|---|---|---|---|
-| 1 | Dev environment / substrate | ✅ Done & verified | — | `compose.yaml`, `infra/` |
-| 2 | Join Treaty MVP (mine → validate → native write) | ✅ Built & verified | — | `app/join_treaty/`, PR #1 |
-| 3 | Product-scope ruling (A/B/C/D) | ⛔ OPEN — needs Claude | Claude → You | `docs/final-pitch.md` |
-| 4 | "Real query history" (kill seeding crutch) | ⏳ Not started (gated by #3) | Cursor agent | Option A/B in pitch |
+| 1 | Dev environment / substrate | ✅ Done & verified live tonight | — | `compose.yaml`, `infra/` |
+| 2 | Join Treaty MVP | ✅ Built & verified (13/13) — **not shipping; spine gets ported** | — | `app/join_treaty/`, `scripts/eval.sh` |
+| 3 | Product-scope ruling | ✅ **CLOSED** — Nullspace | — | `rulings/002` |
+| 4 | **Nullspace Phase 1 — schema · lineage · real PR** | 🔴 **NOT STARTED — critical path** | Cursor agent | `handoffs/003` §3 |
+| 5 | Nullspace Phase 2 — read-after-write, idempotency, eval | 🔴 Not started | Cursor agent | `handoffs/003` §5 |
+| 6 | Phase 3 — the reveal (board, legible on film) | 🔴 Not started | Cursor agent | `handoffs/003` §3 |
+| 7 | **Phase 4 — video, description, OSS PR** | 🔴 **Not started — 2 of 6 judged dimensions at ZERO** | Cursor agent | `handoffs/003` §3 |
+| 8 | Stranger path broken at command 1 | 🔴 Not started — breaks submission req. 2 | Cursor agent | `handoffs/003` §6 |
 
-## Roles (who does what)
+## The three facts the build turns on
 
-- **You (human):** router + final approver. Carry handoffs to Claude and rulings back. Approve builds.
-- **Claude (external):** strategy adjudicator. Rules on scope/direction. Writes to `docs/collab/rulings/`.
-- **Cursor agent (this):** builds, verifies, reports; keeps STATE + DECISIONS current.
-- **Subagents:** scoped one-off tasks (research, verify, demo). Not a source of truth.
+Measured against a live DataHub tonight — **the first time Nullspace has ever been
+observed running**. It works, and its README overstates it in exactly three places:
+
+| README claims | DataHub returns |
+|---|---|
+| "goes solid: real schema" | `schemaMetadata: null` |
+| "real lineage" | 0 upstream, 0 downstream |
+| "a genuinely mergeable dbt PR" | `file://` path; `dbt_project` has **no remote** |
+
+**Closing those three IS the build.** Everything else is polish.
 
 ## Next action for each party (right now)
 
-- **You:** paste `handoffs/001-product-scope-ruling.md` into Claude; paste Claude's answer back into a new file under `docs/collab/rulings/` (or just tell this agent).
-- **Claude:** rule on A/B/C/D and the four questions at the end of `docs/final-pitch.md`.
-- **Cursor agent:** on hold for the ruling; will execute the chosen option and update this file.
+- **Oscar:** rule D9 (public remote for `dbt_project`), and rule the name.
+- **Cursor agent:** **start Phase 0 + Phase 1 now** — `handoffs/003`. Do not wait on D9;
+  L1 (schema) and L2 (lineage) are unblocked.
+- **Claude:** nothing pending.
 
 ## Canonical docs (don't re-derive these)
 
+- Build brief: **`docs/collab/handoffs/003-nullspace-roadmap.md`** ← start here
+- Ruling + the retracted scan: `docs/collab/rulings/002-nullspace-commit.md`
 - Decisions log (append-only): `docs/collab/DECISIONS.md`
 - How we collaborate: `docs/collab/PROTOCOL.md`
-- The pitch under review: `docs/final-pitch.md`
-- Locked ruling + scores: `docs/final-ranking.md` · Scope contract: `docs/build-brief.md`
+- ⚠️ `docs/final-ranking.md` is **SUPERSEDED** — retained as history, carries a banner
+- Nullspace source: branch `park/nullspace-2026-08-08` (`747eb1b`) — **not yet on the working line**
