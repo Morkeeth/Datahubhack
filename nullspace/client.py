@@ -134,6 +134,19 @@ class DataHubClient:
             return dict(props.customProperties)
         return {}
 
+    def get_aspect(self, urn: str, aspect: str) -> dict[str, Any] | None:
+        """Lane B compatibility: return a JSON-shaped native aspect read from GMS."""
+        witness = self.solid_witness(urn)
+        mapping: dict[str, Any] = {
+            "schemaMetadata": witness["schemaMetadata"],
+            "upstreamLineage": witness["lineage"],
+            "ownership": witness["ownership"],
+            "datasetProperties": witness["properties"],
+            "globalTags": {"tags": witness["tags"]},
+        }
+        value = mapping.get(aspect)
+        return value if isinstance(value, dict) else None
+
     def solid_witness(self, urn: str) -> dict[str, Any]:
         """Return exactly what GMS currently stores for the solid-asset claims."""
         props = self.graph.get_aspect(urn, DatasetPropertiesClass)
@@ -181,6 +194,52 @@ class DataHubClient:
             "lineage": {"upstreams": upstreams, "count": len(upstreams)},
             "ownership": {"owners": owners, "count": len(owners)},
         }
+
+    def wait_for_indexed_upstreams(
+        self,
+        urn: str,
+        expected: set[str],
+        *,
+        timeout_seconds: float = 20.0,
+    ) -> set[str]:
+        """Wait for DataHub's lineage index—the UI's witness—to catch the aspect."""
+        query = """
+        query($urn: String!) {
+          dataset(urn: $urn) {
+            lineage(input: {
+              direction: UPSTREAM,
+              start: 0,
+              count: 100,
+              includeGhostEntities: true
+            }) {
+              relationships { entity { urn } }
+            }
+          }
+        }
+        """
+        deadline = time.monotonic() + timeout_seconds
+        returned: set[str] = set()
+        while time.monotonic() < deadline:
+            response = httpx.post(
+                f"{self.gms}/api/graphql",
+                headers=self._headers,
+                json={"query": query, "variables": {"urn": urn}},
+                timeout=10.0,
+            )
+            response.raise_for_status()
+            dataset = ((response.json().get("data") or {}).get("dataset") or {})
+            relationships = (
+                (dataset.get("lineage") or {}).get("relationships") or []
+            )
+            returned = {
+                relationship["entity"]["urn"]
+                for relationship in relationships
+                if relationship.get("entity", {}).get("urn")
+            }
+            if expected.issubset(returned):
+                return returned
+            time.sleep(0.5)
+        return returned
 
     def entity_exists(self, urn: str) -> bool:
         r = httpx.post(

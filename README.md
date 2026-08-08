@@ -56,19 +56,20 @@ With the substrate running (`docker compose up`) and deps installed, the whole
 mine → validate → native write → proof loop is four commands:
 
 ```bash
-export DATAHUB_GMS_URL=http://localhost:8080
-join-treaty seed     # emit real DataHub Query entities for the warehouse joins
-join-treaty audit    # deterministic: 3 accepted N:1 treaties, 2 rejected negatives
-join-treaty apply --all-accepted --yes   # native ERModelRelationship + dataset receipts + read-after-write
-join-treaty serve    # evidence/relationship view at http://localhost:3000
+# Prerequisites: Docker Desktop, Docker Compose v2, Python 3.11+
+bash scripts/install-deps.sh
+./scripts/up.sh          # repository DataHub stack + seeded warehouse
+python3 scripts/moonshot_demo.py
+# three real MCP requester agents → demanded schema → claim → dbt model → solid
+open http://localhost:8787
 ```
 
-What it does: parses explicit single-column equality joins from query history
-with SQLGlot, requires the same join in ≥ 3 independent queries, validates field
-existence and type compatibility, infers cardinality from column profiles (and
-**abstains** without positive evidence), then writes a native
-`ERModelRelationship` plus a `join_treaty:*` receipt onto both datasets — proven
-by read-after-write. Re-running `apply` is idempotent (`0 new`).
+The seeded warehouse and requester-agent names are disclosed demo data. DataHub
+is the witness: the demo reads the solid asset back and prints the returned
+schema metadata, upstream lineage, ownership, demand, and requesters.
+The schema is the union of fields the requester agents declared for their queued
+queries; after solidification, each query is checked against DataHub's returned
+schema and reports `RUNS` or the exact missing fields.
 
 - Offline artifact: [examples/join-treaty-receipt.json](examples/join-treaty-receipt.json)
 - Deterministic tests: `pytest app/tests`

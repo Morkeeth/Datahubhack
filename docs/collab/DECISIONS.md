@@ -19,6 +19,9 @@ Status values: `PROPOSED` · `DECIDED` · `OPEN` · `SUPERSEDED`.
 | D9 | 2026-08-08 | `dbt_project` needs a public GitHub remote or "opens a real PR" stays false | **OPEN — blocked on Oscar** | Claude | `handoffs/003` §7 |
 | D10 | 2026-08-08 | A ghost may go solid only with ≥1 schema field and ≥1 upstream warehouse asset; requester agents are written as native custom Owners (`nullspace_requester`). Every write is verified from GMS read-back. | **DECIDED & verified live** | Cursor Lane A | `nullspace/emit.py`, `nullspace/ghosts.py`; STATE witness |
 | D11 | 2026-08-08 | Local DataHub demo credentials stay overridable environment defaults; retired high-entropy local values are allowlisted only by exact value for history scanning. | **DECIDED & verified** | Cursor Lane A | `compose.yaml`, `.env.example`, `.gitleaks.toml` |
+| D12 | 2026-08-08 | The solid schema comes from the union of fields declared by requester-agent query contracts. A disclosed fallback is allowed only when no contract exists; unsupported demanded fields refuse with the exact shortfall. | **DECIDED & verified live** | Claude Lane B source + Cursor Lane A builder | `nullspace/agents/contracts.py`, `nullspace/builder.py` |
+| D13 | 2026-08-08 | Demand updates lock the complete read→DataHub write→atomic file-save transaction, so simultaneous requester processes cannot silently overwrite one another. | **DECIDED & stress-verified** | Cursor Lane A | `nullspace/persist.py`; live DataHub 10 processes → 1 ghost / demand 10; offline 20/20 |
+| D14 | 2026-08-08 | Solidify waits for both the native lineage aspect and DataHub's async lineage index (the UI/GraphQL witness). Direct-write success alone is not done. | **DECIDED & verified** | Cursor Lane A | cold eval: 16 pass / 0 fail / D9 only pending |
 
 ## Open items (not yet decisions)
 

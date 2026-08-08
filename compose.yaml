@@ -231,6 +231,8 @@ services:
   metadata-ingestion:
     image: acryldata/datahub-ingestion:v1.7.0
     command: ["ingest", "-c", "/recipe/postgres.yml"]
+    environment:
+      DATAHUB_TELEMETRY_ENABLED: "false"
     depends_on:
       datahub-gms:
         condition: service_healthy

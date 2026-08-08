@@ -30,6 +30,13 @@ class Settings:
             "local-warehouse.warehouse.ecommerce.trials,DEV)"
         ),
     )
+    revenue_source_urn: str = os.getenv(
+        "NULLSPACE_REVENUE_SOURCE_URN",
+        (
+            "urn:li:dataset:(urn:li:dataPlatform:postgres,"
+            "local-warehouse.warehouse.ecommerce.revenue_events,DEV)"
+        ),
+    )
 
 
 def settings() -> Settings:
