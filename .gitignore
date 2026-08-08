@@ -1,0 +1,13 @@
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.ruff_cache/
+.env
+/tmp/
+*.egg-info/
+dist/
+build/
+dbt_project/.git/
+.DS_Store
+nullspace-ghosts.json
