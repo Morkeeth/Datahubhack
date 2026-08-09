@@ -37,12 +37,12 @@ Oscar has a separate design idea; **do not merge a board restyle from these comp
 
 ## Submission audit
 
-Full multi-model report: **`docs/collab/SUBMISSION-AUDIT.md`**  
+Full multi-model report: **`docs/archive/collab/SUBMISSION-AUDIT.md`**  
 Consensus: **SHIP WITH GAPS** — engine real; recording risks are board pollution, `file://` PR, dbt Fusion→CTAS, walk-the-book not in `demo.sh`.
 
 ## Still open (submission blockers)
 
-1. **Lane B NOW:** harden https://github.com/datahub-project/datahub/pull/19022 — `handoffs/008-to-claude-harden-rfc-19022.md` + kit `docs/oss/datahub-rfc-19022/`
+1. **Lane B NOW:** harden https://github.com/datahub-project/datahub/pull/19022 — start at `docs/oss/datahub-rfc-19022/TO-CLAUDE.md` (full text: `docs/archive/collab/handoffs/008-to-claude-harden-rfc-19022.md`)
 2. Oscar recording / video upload
 3. Product ruling leftovers only if stranger path still broken on laptop
 
