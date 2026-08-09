@@ -87,3 +87,18 @@ docker compose down --volumes  # destructive clean reset
 The full stack needs roughly 4 CPUs, 8 GB RAM, and several GB of Docker image
 storage. First startup takes longer while images download; subsequent starts
 reuse them.
+
+## Nullspace demand source (custom connector)
+
+Ingest unmet demand the same way any other source is ingested — no GMS fork:
+
+```bash
+datahub ingest -c infra/datahub/nullspace_demand.yml
+# or from live warehouse error logs:
+./scripts/ingest-demand-from-warehouse-logs.sh
+```
+
+`nullspace.ingestion.demand.NullspaceDemandSource` emits structured properties
+(`nullspace.demand` / `state` / `want`), requester ownership, ghost tags, and
+Query entities for registered SQL. See `docs/design/why-a-dataset-urn.md`.
+

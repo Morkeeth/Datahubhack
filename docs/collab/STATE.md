@@ -3,41 +3,33 @@
 > Every witness row names the **host** it was witnessed on and the command that
 > printed it. Night-run receipts from another host are not reused as truth here.
 
-- **Last updated:** 2026-08-09 ~12:00 UTC by Cursor Lane A
+- **Last updated:** 2026-08-09 ~12:30 UTC by Cursor Lane A
 - **Host:** `cursor` (Cloud Agent VM)
-- **Phase:** Check 6 green on GraphQL board; demand ingestion source shipped
-- **Deadline:** Mon 10 Aug 2026 · **Freeze 18:00 Paris**
+- **Phase:** First-class DataHub aspects — structured properties, Query contracts, ownership from first miss, institutionalMemory PR links, merge webhook
+- **Deadline:** Mon 10 Aug 2026 · **Freeze 18:00 Paris** (more build time — stay ambitious)
 - **Worker branch:** `cursor/datahub-hack-setup-4c9d`
 
-## Check 6 (re-run after Lane B trunk `b7b63f7`)
+## This turn (ambition)
 
-`./scripts/without-datahub.sh` → **exit 0** on host `cursor`:
-three refusals, zero local ghosts, board `catalog: unreachable`.
+Maintainer kill R5 (“KV in a costume”) answered on stock GMS v1.7 without a rebuild:
 
-Prove it can fail: `NULLSPACE_DEAD_GMS=http://localhost:8080 ./scripts/without-datahub.sh` → **exit 1**.
-
-## Stretch — demand as DataHub ingestion source
-
-```bash
-datahub ingest -c infra/datahub/nullspace_demand.yml
-```
-
-Source: `nullspace.ingestion.demand.NullspaceDemandSource` (custom type, no GMS fork).
-Witness: ghost `churn by cohort` with `nullspace.schema_source=nullspace.ingestion.demand`, demand=3, contracts JSON.
-
-## Handback — Lane B (do not edit from Lane A)
-
-`nullspace/mcp_server.py` ~163–168 still warns *"demand was recorded locally only"* after D24 made `consumer_search(dh=None)` refuse. That string is now false. **Yours to delete/replace** — Lane A will not touch `mcp_server.py`.
-
-## Catalog-is-database checks
-
-| # | Status |
+| Native construct | Witness (host `cursor`) |
 |---|---|
-| 1 hydrate | ✅ |
-| 2 mid-claim delete | ✅ |
-| 3 contracts in GMS | ✅ |
-| 4 why-a-dataset-urn.md | ✅ |
-| 5 merge→finalize | ✅ |
-| 6 without-datahub | ✅ (this turn) |
-| 7 cold eval | ✅ |
-| stretch ingest source | ✅ (this turn) |
+| `structuredProperties` `nullspace.demand/state/want` | smoke want `ambitious first-class lifecycle` → demand=3.0, state=ghost |
+| `Ownership` from **first miss** | 3 `nullspace_requester` owners before solidify |
+| `Query` entities for contracts | `nullspace.query_urns` + `contracts_for` reads QueryProperties |
+| `institutionalMemory` | PR URL on Links tab |
+| `NullspaceDemandSource` parity | structured props + ownership + Queries in workunits |
+| Merge webhook | `python3 -m nullspace.webhook` on :8790 |
+
+Dual-write of `customProperties` kept so Lane B GraphQL board needs no change.
+
+## Handback — Lane B
+
+`mcp_server.py` ~163–168 still warns *"recorded locally"* — still yours.
+
+## Next (optional)
+
+- Point GitHub webhook at hosted `:8790` for hands-free solidify-on-merge
+- Open OSS PR to `datahub-project/datahub` with this connector (Oscar / Lane B filing)
+- Submission package remains Lane B

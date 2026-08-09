@@ -11,17 +11,22 @@ force a second product beside DataHub. We refuse that split.
 
 From the first miss the ghost is **searchable** (same index as warehouse tables),
 **ownable** (requester agents as native `Ownership` with type
-`nullspace_requester`), and **lineage-ready** (solidify attaches
-`UpstreamLineage` to the real source). Resolution history and registered query
-contracts ride in `datasetProperties.customProperties` today because stock
-DataHub v1.7.0 exposes no Demand aspect we can register without rebuilding GMS;
-that JSON is a stand-in for a future first-class aspect, not a private database.
-The local JSON files are a cache. Delete them mid-demo; hydrate from GMS; the
-state machine continues.
+`nullspace_requester` — written on the first miss, not only at solidify), and
+**lineage-ready** (solidify attaches `UpstreamLineage` to the real source).
+
+Lifecycle fields are first-class **structured properties**
+(`nullspace.demand`, `nullspace.state`, `nullspace.want`) on stock DataHub
+v1.7 — not only a JSON bag. Requester SQL is emitted as real **Query** entities
+(`QueryProperties` + `QuerySubjects` → ghost URN). The PR lives in
+`institutionalMemory` so it shows on the Links tab. Resolution history remains
+bound to the URN (Scar Tissue). `datasetProperties.customProperties` is kept as
+a dual-write so existing GraphQL board reads keep working; it is a cache of the
+first-class aspects, not the database.
 
 When the ghost goes solid it does not migrate to another type — the same URN
 gains `SchemaMetadata`, loses the `ghost` tag for `solid`, and keeps the
 requesters who asked. Demand and fulfillment are one object in one catalog.
-That is the RFC spine: a Demand aspect (or structured property) on Dataset, plus
-an ingestion source that emits unmet-search events — not a sidecar product that
-happens to deep-link into DataHub.
+
+The connector is real: `datahub ingest -c infra/datahub/nullspace_demand.yml`
+(`NullspaceDemandSource`). That is the RFC spine with an implementation behind
+it — not a sidecar product that happens to deep-link into DataHub.

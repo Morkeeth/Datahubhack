@@ -4,16 +4,19 @@ Run with the same CLI a maintainer already knows:
 
     datahub ingest -c infra/datahub/nullspace_demand.yml
 
-The source turns unmet demand (postgres \"relation does not exist\" log lines,
-or explicit sample events) into Dataset MCPs under platform ``nullspace`` —
-searchable, ownable, lineage-ready ghosts. This is the connector behind
-``docs/design/why-a-dataset-urn.md``: the RFC is not a paragraph, it is a recipe.
+Emits Dataset MCPs under platform ``nullspace`` with:
+  - datasetProperties (dual-write for board compatibility)
+  - structuredProperties (nullspace.demand / state / want)
+  - ownership (requesters as nullspace_requester from the first miss)
+  - globalTags (ghost)
+  - Query entities for registered SQL contracts
 
 LANE A (Cursor). Calls Lane B's harvest parser for log lines; does not edit it.
 """
 
 from __future__ import annotations
 
+import hashlib
 import json
 from pathlib import Path
 from typing import Iterable, Iterator
@@ -30,9 +33,25 @@ from datahub.ingestion.api.decorators import (
 from datahub.ingestion.api.source import Source, SourceReport
 from datahub.ingestion.api.workunit import MetadataWorkUnit
 from datahub.metadata.schema_classes import (
+    AuditStampClass,
+    CorpUserInfoClass,
     DatasetPropertiesClass,
     GlobalTagsClass,
+    OwnerClass,
+    OwnershipClass,
+    OwnershipTypeClass,
+    OwnershipTypeInfoClass,
+    OwnershipTypeKeyClass,
+    QueryLanguageClass,
+    QueryPropertiesClass,
+    QuerySourceClass,
+    QueryStatementClass,
+    QuerySubjectClass,
+    QuerySubjectsClass,
     StatusClass,
+    StructuredPropertiesClass,
+    StructuredPropertyDefinitionClass,
+    StructuredPropertyValueAssignmentClass,
     TagAssociationClass,
     TagPropertiesClass,
 )
@@ -40,9 +59,13 @@ from pydantic import Field
 
 from nullspace import GHOST_TAG, PLATFORM
 from nullspace.client import now_ms
-from nullspace.urns import ghost_dataset_name, ghost_urn
+from nullspace.urns import corpuser_urn, ghost_dataset_name, ghost_urn
 
-_PLATFORM_URN = f"urn:li:dataPlatform:{PLATFORM}"
+_ACTOR = "urn:li:corpuser:datahub"
+_REQUESTER_TYPE_URN = "urn:li:ownershipType:nullspace_requester"
+_SP_DEMAND = "urn:li:structuredProperty:nullspace.demand"
+_SP_STATE = "urn:li:structuredProperty:nullspace.state"
+_SP_WANT = "urn:li:structuredProperty:nullspace.want"
 
 
 class DemandEvent(ConfigModel):
@@ -54,23 +77,29 @@ class DemandEvent(ConfigModel):
 
 
 class NullspaceDemandSourceConfig(ConfigModel):
-    """Inputs for demand ingestion."""
-
     postgres_log: str | None = Field(
         default=None,
         description="Path to a Postgres log file containing relation-does-not-exist errors.",
     )
-    events: list[DemandEvent] = Field(
-        default_factory=list,
-        description="Explicit demand events (tests / demos without a log file).",
-    )
+    events: list[DemandEvent] = Field(default_factory=list)
     events_path: str | None = Field(
         default=None,
         description="JSONL file of {want, agent_id, sql?, needs_fields?} objects.",
     )
 
 
-@platform_name("Nullspace Demand")
+def _audit() -> AuditStampClass:
+    return AuditStampClass(time=now_ms(), actor=_ACTOR)
+
+
+def _query_urn(agent_id: str, want: str, sql: str) -> str:
+    digest = hashlib.sha1(
+        f"{agent_id}|{want.strip().lower()}|{sql}".encode()
+    ).hexdigest()[:20]
+    return f"urn:li:query:nullspace_{digest}"
+
+
+@platform_name("Nullspace Demand", id="nullspace-demand")
 @support_status(SupportStatus.INCUBATING)
 @config_class(NullspaceDemandSourceConfig)
 class NullspaceDemandSource(Source):
@@ -83,7 +112,7 @@ class NullspaceDemandSource(Source):
 
     @classmethod
     def create(cls, config_dict: dict, ctx: PipelineContext) -> "NullspaceDemandSource":
-        return cls(NullspaceDemandSourceConfig.parse_obj(config_dict), ctx)
+        return cls(NullspaceDemandSourceConfig.model_validate(config_dict), ctx)
 
     def get_workunits_internal(self) -> Iterable[MetadataWorkUnit]:
         events = list(self._collect_events())
@@ -94,19 +123,13 @@ class NullspaceDemandSource(Source):
             )
             return
 
-        # Aggregate: one ghost URN per want, demand = unique agents, contracts merged.
         by_want: dict[str, dict] = {}
         for event in events:
             want = event["want"].strip()
             key = want.lower()
             row = by_want.setdefault(
                 key,
-                {
-                    "want": want,
-                    "agents": [],
-                    "contracts": [],
-                    "resolution": [],
-                },
+                {"want": want, "agents": [], "contracts": [], "resolution": []},
             )
             agent = event["agent_id"]
             if agent not in row["agents"]:
@@ -120,9 +143,7 @@ class NullspaceDemandSource(Source):
                     }
                 )
             if event.get("sql") or event.get("needs_fields"):
-                contracts = [
-                    c for c in row["contracts"] if c.get("agent_id") != agent
-                ]
+                contracts = [c for c in row["contracts"] if c.get("agent_id") != agent]
                 contracts.append(
                     {
                         "agent_id": agent,
@@ -134,7 +155,31 @@ class NullspaceDemandSource(Source):
                 )
                 row["contracts"] = contracts
 
-        # Ensure the ghost tag exists once.
+        audit = _audit()
+        # Structured property definitions (once).
+        for urn, qname, vtype, display in (
+            (_SP_DEMAND, "nullspace.demand", "urn:li:dataType:datahub.number", "Nullspace demand"),
+            (_SP_STATE, "nullspace.state", "urn:li:dataType:datahub.string", "Nullspace state"),
+            (_SP_WANT, "nullspace.want", "urn:li:dataType:datahub.string", "Nullspace want"),
+        ):
+            yield MetadataWorkUnit(
+                id=f"sp-def-{qname}",
+                mcp=MetadataChangeProposalWrapper(
+                    entityUrn=urn,
+                    aspect=StructuredPropertyDefinitionClass(
+                        qualifiedName=qname,
+                        displayName=display,
+                        valueType=vtype,
+                        entityTypes=["urn:li:entityType:datahub.dataset"],
+                        cardinality="SINGLE",
+                        description=display,
+                        immutable=False,
+                        created=audit,
+                        lastModified=audit,
+                    ),
+                ),
+            )
+
         tag_urn = f"urn:li:tag:{GHOST_TAG}"
         yield MetadataWorkUnit(
             id=f"tag-{GHOST_TAG}",
@@ -146,11 +191,71 @@ class NullspaceDemandSource(Source):
                 ),
             ),
         )
+        yield MetadataWorkUnit(
+            id="ownership-type-nullspace-requester-key",
+            mcp=MetadataChangeProposalWrapper(
+                entityUrn=_REQUESTER_TYPE_URN,
+                aspect=OwnershipTypeKeyClass(id="nullspace_requester"),
+            ),
+        )
+        yield MetadataWorkUnit(
+            id="ownership-type-nullspace-requester-info",
+            mcp=MetadataChangeProposalWrapper(
+                entityUrn=_REQUESTER_TYPE_URN,
+                aspect=OwnershipTypeInfoClass(
+                    name="Nullspace requester",
+                    description="AI agent whose catalog miss created demand",
+                    created=audit,
+                    lastModified=audit,
+                ),
+            ),
+        )
 
         for row in by_want.values():
             want = row["want"]
             urn = ghost_urn(want)
             name = ghost_dataset_name(want)
+            query_urns: list[str] = []
+            for contract in row["contracts"]:
+                qurn = _query_urn(
+                    contract["agent_id"], want, contract.get("sql") or ""
+                )
+                query_urns.append(qurn)
+                yield MetadataWorkUnit(
+                    id=f"query-props-{qurn}",
+                    mcp=MetadataChangeProposalWrapper(
+                        entityUrn=qurn,
+                        aspect=QueryPropertiesClass(
+                            statement=QueryStatementClass(
+                                value=contract.get("sql")
+                                or f"-- fields: {contract.get('needs_fields')}",
+                                language=QueryLanguageClass.SQL,
+                            ),
+                            source=QuerySourceClass.MANUAL,
+                            created=audit,
+                            lastModified=audit,
+                            name=f"nullspace:{contract['agent_id']}",
+                            description=json.dumps(
+                                {
+                                    "want": want,
+                                    "agent_id": contract["agent_id"],
+                                    "needs_fields": contract.get("needs_fields") or [],
+                                },
+                                sort_keys=True,
+                            ),
+                        ),
+                    ),
+                )
+                yield MetadataWorkUnit(
+                    id=f"query-subjects-{qurn}",
+                    mcp=MetadataChangeProposalWrapper(
+                        entityUrn=qurn,
+                        aspect=QuerySubjectsClass(
+                            subjects=[QuerySubjectClass(entity=urn)]
+                        ),
+                    ),
+                )
+
             custom = {
                 "nullspace.demand": str(len(row["agents"])),
                 "nullspace.want": want,
@@ -161,12 +266,8 @@ class NullspaceDemandSource(Source):
                 "nullspace.schema_source": "nullspace.ingestion.demand",
                 "nullspace.resolution": json.dumps(row["resolution"]),
                 "nullspace.contracts": json.dumps(row["contracts"]),
+                "nullspace.query_urns": ",".join(query_urns),
             }
-            props = DatasetPropertiesClass(
-                name=name,
-                description=f"Nullspace GHOST (ingestion source) for demand: {want}",
-                customProperties=custom,
-            )
             yield MetadataWorkUnit(
                 id=f"nullspace-demand-{name}-status",
                 mcp=MetadataChangeProposalWrapper(
@@ -175,7 +276,42 @@ class NullspaceDemandSource(Source):
             )
             yield MetadataWorkUnit(
                 id=f"nullspace-demand-{name}-props",
-                mcp=MetadataChangeProposalWrapper(entityUrn=urn, aspect=props),
+                mcp=MetadataChangeProposalWrapper(
+                    entityUrn=urn,
+                    aspect=DatasetPropertiesClass(
+                        name=name,
+                        description=f"Nullspace GHOST (ingestion source) for demand: {want}",
+                        customProperties=custom,
+                    ),
+                ),
+            )
+            yield MetadataWorkUnit(
+                id=f"nullspace-demand-{name}-sp",
+                mcp=MetadataChangeProposalWrapper(
+                    entityUrn=urn,
+                    aspect=StructuredPropertiesClass(
+                        properties=[
+                            StructuredPropertyValueAssignmentClass(
+                                propertyUrn=_SP_DEMAND,
+                                values=[float(len(row["agents"]))],
+                                created=audit,
+                                lastModified=audit,
+                            ),
+                            StructuredPropertyValueAssignmentClass(
+                                propertyUrn=_SP_STATE,
+                                values=["ghost"],
+                                created=audit,
+                                lastModified=audit,
+                            ),
+                            StructuredPropertyValueAssignmentClass(
+                                propertyUrn=_SP_WANT,
+                                values=[want],
+                                created=audit,
+                                lastModified=audit,
+                            ),
+                        ]
+                    ),
+                ),
             )
             yield MetadataWorkUnit(
                 id=f"nullspace-demand-{name}-tags",
@@ -184,6 +320,39 @@ class NullspaceDemandSource(Source):
                     aspect=GlobalTagsClass(
                         tags=[TagAssociationClass(tag=tag_urn)]
                     ),
+                ),
+            )
+            owners = []
+            for agent in row["agents"]:
+                owner_urn = corpuser_urn(agent)
+                yield MetadataWorkUnit(
+                    id=f"corpuser-{agent}",
+                    mcp=MetadataChangeProposalWrapper(
+                        entityUrn=owner_urn,
+                        aspect=CorpUserInfoClass(
+                            active=True,
+                            displayName=agent,
+                            title="AI requester agent",
+                            system=True,
+                            customProperties={
+                                "nullspace.role": "requester",
+                                "nullspace.asset": urn,
+                            },
+                        ),
+                    ),
+                )
+                owners.append(
+                    OwnerClass(
+                        owner=owner_urn,
+                        type=OwnershipTypeClass.CUSTOM,
+                        typeUrn=_REQUESTER_TYPE_URN,
+                    )
+                )
+            yield MetadataWorkUnit(
+                id=f"nullspace-demand-{name}-ownership",
+                mcp=MetadataChangeProposalWrapper(
+                    entityUrn=urn,
+                    aspect=OwnershipClass(owners=owners, lastModified=audit),
                 ),
             )
 

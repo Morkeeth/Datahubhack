@@ -6,7 +6,7 @@ from nullspace.ingestion.demand import NullspaceDemandSource, NullspaceDemandSou
 
 
 def test_demand_source_emits_ghost_mcps_from_events():
-    cfg = NullspaceDemandSourceConfig.parse_obj(
+    cfg = NullspaceDemandSourceConfig.model_validate(
         {
             "events": [
                 {
@@ -27,9 +27,13 @@ def test_demand_source_emits_ghost_mcps_from_events():
     wus = list(source.get_workunits_internal())
     ids = [wu.id for wu in wus]
     assert any(i.startswith("tag-") for i in ids)
-    assert any("props" in i for i in ids)
+    assert any(i.endswith("-props") for i in ids)
+    assert any(i.endswith("-sp") for i in ids)
+    assert any(i.endswith("-ownership") for i in ids)
+    assert any(i.startswith("query-props-") for i in ids)
     props_wu = next(wu for wu in wus if wu.id.endswith("-props"))
     aspect = props_wu.metadata.aspect
     assert aspect.customProperties["nullspace.demand"] == "2"
     assert aspect.customProperties["nullspace.state"] == "ghost"
     assert "nullspace.contracts" in aspect.customProperties
+    assert "nullspace.query_urns" in aspect.customProperties
