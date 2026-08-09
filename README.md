@@ -98,14 +98,16 @@ source URN, and DataHub's current schema, lineage, ownership, tags, and demand.
 ## Honest boundary
 
 The builder targets the public fulfillment repo
-[`Morkeeth/nullspace-dbt`](https://github.com/Morkeeth/nullspace-dbt). When push
-credentials (`NULLSPACE_DBT_TOKEN`) can open a PR, `pr_url` is an
-`https://github.com/...` URL, the ghost stays **claimed** until that PR merges,
-and `python3 -m nullspace.cli finalize --want "..."` solidifies on merge.
+[`Morkeeth/nullspace-dbt`](https://github.com/Morkeeth/nullspace-dbt) (D9).
+`main` is hollow — no `ghost_*` models — so every model must arrive through a
+pull request the builder opens against **`main`**.
 
-Without write access, `pr_url` stays a `file://` local change reference — **not
-a pull request** — and solidify still runs locally so the DataHub witness path
-works. Nullspace never claims a PR that does not exist.
+When the authenticated `gh` CLI (or `NULLSPACE_DBT_TOKEN`) can push, `pr_url` is
+an `https://github.com/...` URL, the ghost stays **claimed** until that PR
+merges, and `python3 -m nullspace.cli finalize --want "..."` solidifies on
+merge. If push is unavailable, `pr_url` stays a `file://` local change
+reference — **not a pull request** — and solidify still runs locally so the
+DataHub witness path works. Nullspace never claims a PR that does not exist.
 
 Reset a dirty demo graph before a stranger run:
 

@@ -231,47 +231,43 @@ def write_dbt_model(ghost: Ghost, repo: Path, plan: BuildPlan) -> Path:
     return out
 
 
-def _remote_with_token(remote: str, token: str | None) -> str:
-    if not token or not remote.startswith("https://"):
-        return remote
-    # Avoid embedding credentials in logs; only used for git push env.
-    rest = remote.removeprefix("https://")
-    return f"https://x-access-token:{token}@{rest}"
+def _normalize_remote(remote: str) -> str:
+    remote = remote.strip()
+    if remote.endswith(".git"):
+        remote = remote[: -len(".git")]
+    return remote
 
 
-def ensure_dbt_remote(repo: Path, remote: str, token: str | None) -> str:
-    """Ensure origin exists; return the URL used for `git push`."""
-    public = remote
-    push_url = _remote_with_token(remote, token)
-    existing = subprocess.run(
-        ["git", "remote", "get-url", "origin"],
-        cwd=repo,
-        check=False,
-        capture_output=True,
-        text=True,
+def _gh_env(token: str | None) -> dict[str, str]:
+    env = {**os.environ}
+    if token:
+        env["GH_TOKEN"] = token
+        env["GITHUB_TOKEN"] = token
+    return env
+
+
+def _last_change_ref_error(detail: str) -> None:
+    """Persist the most recent push/PR failure for receipts and STATE."""
+    path = Path(
+        os.getenv("NULLSPACE_DBT_LAST_ERROR", "/tmp/nullspace-dbt-last-error.txt")
     )
-    if existing.returncode != 0:
-        subprocess.run(
-            ["git", "remote", "add", "origin", public],
-            cwd=repo,
-            check=False,
-            capture_output=True,
-            text=True,
-        )
-    else:
-        subprocess.run(
-            ["git", "remote", "set-url", "origin", public],
-            cwd=repo,
-            check=False,
-            capture_output=True,
-            text=True,
-        )
-    return push_url
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(detail[:2000], encoding="utf-8")
 
 
 def create_change_reference(repo: Path, branch: str, title: str, model_path: Path) -> str:
-    """Commit explicit dbt files; return a real PR URL only when one exists."""
+    """Open a real PR against nullspace-dbt main; else honest file:// reference.
+
+    D9: main stays hollow (no ghost_* models). Every model arrives via PR.
+    Push uses the authenticated `gh` CLI / GH_TOKEN on this machine.
+    """
     cfg = settings()
+    remote = _normalize_remote(cfg.dbt_remote)
+    base = cfg.dbt_pr_base or "main"
+    slug = cfg.dbt_repo_slug
+    env = _gh_env(cfg.dbt_token)
+
+    # Keep a local working copy for warehouse validation / board demos.
     subprocess.run(["git", "init"], cwd=repo, check=False, capture_output=True)
     subprocess.run(
         ["git", "config", "user.email", "nullspace-builder@local"],
@@ -293,57 +289,136 @@ def create_change_reference(repo: Path, branch: str, title: str, model_path: Pat
         "models/sources.yml",
         str(model_path.relative_to(repo)),
     ]
+    # Only stage paths that exist (sources.yml may be absent on hollow main).
+    existing_paths = [p for p in explicit_paths if (repo / p).exists()]
     subprocess.run(
-        ["git", "add", "--", *explicit_paths],
+        ["git", "add", "--", *existing_paths],
         cwd=repo,
         check=True,
         capture_output=True,
     )
     subprocess.run(
-        ["git", "commit", "-m", title, "--allow-empty"],
+        ["git", "commit", "-m", title],
         cwd=repo,
         check=False,
         capture_output=True,
     )
-    push_url = ensure_dbt_remote(repo, cfg.dbt_remote, cfg.dbt_token)
-    push_env = {**os.environ}
-    if cfg.dbt_token:
-        push_env["GH_TOKEN"] = cfg.dbt_token
-        push_env["GITHUB_TOKEN"] = cfg.dbt_token
-    push = subprocess.run(
-        ["git", "push", push_url, f"HEAD:refs/heads/{branch}"],
-        cwd=repo,
+
+    # Publish from a fresh clone of hollow main so history matches the remote.
+    work = Path(
+        os.getenv("NULLSPACE_DBT_WORKTREE", f"/tmp/nullspace-dbt-pr-{os.getpid()}")
+    )
+    if work.exists():
+        subprocess.run(["rm", "-rf", str(work)], check=False)
+    clone = subprocess.run(
+        ["gh", "repo", "clone", slug, str(work), "--", "--depth", "1", "--branch", base],
         check=False,
         capture_output=True,
         text=True,
-        env=push_env,
+        env=env,
     )
-    if push.returncode == 0:
-        pr = subprocess.run(
-            [
-                "gh",
-                "pr",
-                "create",
-                "--repo",
-                "Morkeeth/nullspace-dbt",
-                "--title",
-                title,
-                "--body",
-                (
-                    "Opened by the Nullspace builder agent after warehouse SQL "
-                    "validation. Merging this PR solidifies the ghost in DataHub."
-                ),
-                "--head",
-                branch,
-            ],
-            cwd=repo,
-            check=False,
-            capture_output=True,
-            text=True,
-            env=push_env,
+    if clone.returncode != 0:
+        detail = (
+            f"clone failed for {slug}@{base}: "
+            f"{(clone.stderr or clone.stdout or '')[:500]}"
         )
-        if pr.returncode == 0 and pr.stdout.strip():
-            return pr.stdout.strip().splitlines()[-1]
+        _last_change_ref_error(detail)
+        return f"file://{repo.resolve()}#{branch}"
+
+    subprocess.run(
+        ["git", "checkout", "-B", branch],
+        cwd=work,
+        check=True,
+        capture_output=True,
+        env=env,
+    )
+    subprocess.run(
+        ["git", "config", "user.email", "nullspace-builder@local"],
+        cwd=work,
+        check=False,
+        capture_output=True,
+    )
+    subprocess.run(
+        ["git", "config", "user.name", "nullspace-builder"],
+        cwd=work,
+        check=False,
+        capture_output=True,
+    )
+    (work / "models").mkdir(parents=True, exist_ok=True)
+    for rel in existing_paths:
+        src = repo / rel
+        dest = work / rel
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        dest.write_bytes(src.read_bytes())
+    subprocess.run(
+        ["git", "add", "--", *existing_paths],
+        cwd=work,
+        check=True,
+        capture_output=True,
+        env=env,
+    )
+    commit = subprocess.run(
+        ["git", "commit", "-m", title],
+        cwd=work,
+        check=False,
+        capture_output=True,
+        text=True,
+        env=env,
+    )
+    if commit.returncode != 0 and "nothing to commit" in (commit.stdout + commit.stderr):
+        detail = f"commit refused: nothing to commit on {branch}"
+        _last_change_ref_error(detail)
+        return f"file://{repo.resolve()}#{branch}"
+
+    # Prefer gh-authenticated push (handoff §D9); fall back to token URL.
+    push = subprocess.run(
+        ["git", "push", "-u", "origin", f"HEAD:refs/heads/{branch}"],
+        cwd=work,
+        check=False,
+        capture_output=True,
+        text=True,
+        env=env,
+    )
+    if push.returncode != 0:
+        detail = (
+            f"git push to {slug} failed: {(push.stderr or push.stdout or '')[:700]}"
+        )
+        _last_change_ref_error(detail)
+        return f"file://{repo.resolve()}#{branch}"
+
+    pr = subprocess.run(
+        [
+            "gh",
+            "pr",
+            "create",
+            "--repo",
+            slug,
+            "--base",
+            base,
+            "--head",
+            branch,
+            "--title",
+            title,
+            "--body",
+            (
+                "Opened by the Nullspace builder agent after warehouse SQL "
+                "validation.\n\nMerging this PR is the solidify trigger: the ghost "
+                "stays claimed until merge, then DataHub receives schema, lineage, "
+                "and requester Owners.\n\nRemote: "
+                f"{remote} (base `{base}`)."
+            ),
+        ],
+        cwd=work,
+        check=False,
+        capture_output=True,
+        text=True,
+        env=env,
+    )
+    if pr.returncode == 0 and pr.stdout.strip():
+        return pr.stdout.strip().splitlines()[-1]
+
+    detail = f"gh pr create failed: {(pr.stderr or pr.stdout or '')[:700]}"
+    _last_change_ref_error(detail)
     # Honest local change reference. This is not a pull request.
     return f"file://{repo.resolve()}#{branch}"
 
@@ -482,12 +557,24 @@ def build_and_solidify(ns: Nullspace, want: str, *, builder_id: str = "builder-1
     title = f"feat(nullspace): solidify {ghost.want}"
     pr_url = create_change_reference(repo, branch, title, path)
     ns.attach_pr(want, pr_url)
-    ns.record_resolution(
-        want,
-        agent_id=builder_id,
-        event="pr_opened" if pr_url.startswith("https://github.com/") else "change_reference",
-        detail=pr_url,
-    )
+    if pr_url.startswith("https://github.com/"):
+        ns.record_resolution(
+            want,
+            agent_id=builder_id,
+            event="pr_opened",
+            detail=pr_url,
+        )
+    else:
+        err_path = Path(
+            os.getenv("NULLSPACE_DBT_LAST_ERROR", "/tmp/nullspace-dbt-last-error.txt")
+        )
+        err = err_path.read_text(encoding="utf-8") if err_path.exists() else ""
+        ns.record_resolution(
+            want,
+            agent_id=builder_id,
+            event="change_reference",
+            detail=json.dumps({"pr_url": pr_url, "push_error": err[:700]}, sort_keys=True),
+        )
     # Real GitHub PR: leave claimed so merge is the solidify trigger.
     # Local file:// reference: solidify immediately — honest, no PR claimed.
     if pr_url.startswith("https://github.com/"):

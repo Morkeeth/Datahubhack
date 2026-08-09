@@ -74,8 +74,8 @@ Not a parallel track — a tripwire.
 
 | # | Slice | Owner | Done when | Blocks |
 |---|---|---|---|---|
-| **0a** | Create `Morkeeth/nullspace-dbt` **public** (D9) | **Oscar** | `gh repo view` → PUBLIC | 1b, the pitch's ending |
-| **0b** | Fork `datahub-project/datahub` → `Morkeeth/datahub` | **Oscar** | fork exists | 3 |
+| ~~**0a**~~ | ~~Create `Morkeeth/nullspace-dbt` public (D9)~~ | Claude | ✅ **DONE 09:5x Sun** — see §D9 below | — |
+| ~~**0b**~~ | ~~Fork `datahub-project/datahub`~~ | Claude | ✅ **DONE** `Morkeeth/datahub`, fork of `datahub-project/datahub` | — |
 | **0c** | `nullspace reset` — wipe the 7 junk ghosts | Cursor | search returns 0 nullspace assets | clean demo |
 | **1a** | **Lineage true** — `upstreamLineage` written and read back | Cursor | aspect API 200 **and** GraphQL `total ≥ 1` on a ghost created *after* the fix | the "real lineage" claim |
 | **1b** | **Real PR** — builder opens it, `pr_url` is `https://` | Cursor | `gh pr view --json state` → `OPEN`; URL bound into resolution history | the ending |
@@ -101,6 +101,35 @@ says the last five hours are lost to upload, form fields, and a broken link.
 5. Never `git add -A` — `dbt_project/` carries a nested `.git`.
 6. **Mock the presentation, never the proof.** Staged, labelled demo data that sharpens
    the aha is honest. `dryRun=true` in the codebase is not.
+
+## D9 — RULED AND EXECUTED (2026-08-09 ~09:5x Paris)
+
+Oscar ruled yes. Both blockers are gone. **Cursor: stop treating the PR as blocked.**
+
+**`https://github.com/Morkeeth/nullspace-dbt` — PUBLIC, Apache-2.0, default branch `main`.**
+
+- `main` holds **only** `dbt_project.yml`, `models/stg_trials.sql`, `README.md`,
+  `LICENSE`, `.gitignore`. **No `ghost_*` model is on `main`, by design** — every model
+  must arrive by a pull request an agent opened, or the PR proves nothing.
+- The local `~/Datahubhack/dbt_project` working tree is now on `main` and tracks that
+  remote. The three previously-generated ghost `.sql` files were **removed from the
+  working tree** and the three old `nullspace/ghost_*` local branches are dead history —
+  the builder regenerates them. The demo now starts hollow on the dbt side too.
+- Verified: `gh repo view Morkeeth/nullspace-dbt` → `visibility: PUBLIC`,
+  `defaultBranchRef: main`.
+
+**Config Lane A needs to wire** (`nullspace/config.py`, Cursor's file, not mine):
+`NULLSPACE_DBT_REMOTE=https://github.com/Morkeeth/nullspace-dbt` and a PR base of `main`.
+Push with the `gh` CLI already authenticated on this machine (account `Morkeeth`, scopes
+include `repo`).
+
+**Still unproven:** no pull request has been opened against it yet. The base branch and
+the permissions are in place; *`gh pr create` succeeding* is Cursor's check 4 and it has
+not been run. Do not write "real PR" into any doc until `gh pr view --json state`
+returns `OPEN`.
+
+**OSS lane unblocked too:** `https://github.com/Morkeeth/datahub` exists and is a
+verified fork of `datahub-project/datahub`. Slice 3 has no excuse left.
 
 ## Prompts
 

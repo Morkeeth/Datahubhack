@@ -19,11 +19,13 @@ class Settings:
         "NULLSPACE_DBT_REPO",
         os.path.join(os.path.dirname(__file__), "..", "dbt_project"),
     )
-    # Public fulfillment repo (D9). Real PRs require push credentials.
+    # Public fulfillment repo (D9 — ruled YES). Models arrive only via PR.
     dbt_remote: str = os.getenv(
         "NULLSPACE_DBT_REMOTE",
-        "https://github.com/Morkeeth/nullspace-dbt.git",
+        "https://github.com/Morkeeth/nullspace-dbt",
     )
+    dbt_pr_base: str = os.getenv("NULLSPACE_DBT_PR_BASE", "main")
+    dbt_repo_slug: str = os.getenv("NULLSPACE_DBT_REPO_SLUG", "Morkeeth/nullspace-dbt")
     dbt_token: str | None = (
         os.getenv("NULLSPACE_DBT_TOKEN")
         or os.getenv("GH_TOKEN")
