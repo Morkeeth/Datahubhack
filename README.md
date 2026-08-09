@@ -61,6 +61,7 @@ From a clean clone:
 bash scripts/install-deps.sh
 ./scripts/up.sh
 # Same NULLSPACE_STORE as up.sh/board (default /tmp/nullspace-ghosts.json)
+export NULLSPACE_STORE="${NULLSPACE_STORE:-/tmp/nullspace-ghosts.json}"
 NULLSPACE_EVAL_WANT="fresh-nullspace-$(date +%s)" \
 python3 scripts/eval_nullspace.py --cold
 open http://localhost:8787
@@ -85,14 +86,12 @@ registered queries, discovers a real warehouse source from DataHub, and prints
 the executable dbt SQL it generated. With demand below threshold it visibly
 declines and names the exact shortfall.
 
-Review the last successful decision against DataHub again:
+Review the last decision against DataHub (file cache **or** catalog):
 
 ```bash
 python3 -m nullspace.builder --review /tmp/nullspace-builder-receipt.json
+python3 -m nullspace.builder --review-want "your demand"
 ```
-
-The receipt includes the decision, generated SQL, warehouse `EXPLAIN` proof,
-source URN, and DataHub's current schema, lineage, ownership, tags, and demand.
 
 ## What is visible in DataHub
 

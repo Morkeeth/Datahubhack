@@ -315,6 +315,8 @@ class Nullspace:
             )
             self._mirror(ghost)
             self.store.save(ghost)
+            if self.dh is not None:
+                self.dh.clear_open_demand(_key(want))
             return ghost
 
     def ready_to_build(self) -> list[Ghost]:
@@ -632,9 +634,23 @@ def consumer_search(
                 ),
                 "agent_urn": corpuser_urn(agent_id),
             }
+        want_key = _key(want)
+        # Harvest-scale: after this process confirmed no solid hit for `want`,
+        # skip re-search on later requesters (MCP emit still runs via on_miss).
+        if dh.is_open_demand(want_key):
+            ghost = ns.on_miss(
+                want, agent_id, detail="no non-ghost dataset matched"
+            )
+            return {
+                "status": "miss_ghosted",
+                "agent_id": agent_id,
+                "want": want,
+                "ghost": ghost.to_public(),
+                "agent_urn": corpuser_urn(agent_id),
+                "search_skipped": True,
+            }
         hits = dh.search_datasets(want)
         real_hits = []
-        want_key = _key(want)
         for hit in hits:
             urn = hit.get("urn", "")
             if ":nullspace," not in urn:
@@ -649,6 +665,8 @@ def consumer_search(
             if _key(props.get("nullspace.want", "")) == want_key:
                 real_hits.append(hit)
         hits = real_hits
+        if not hits:
+            dh.mark_open_demand(want_key)
     if hits:
         return {
             "status": "found",

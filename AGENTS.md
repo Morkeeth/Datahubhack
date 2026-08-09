@@ -72,8 +72,10 @@ npx -y @acryldata/mcp-server-datahub
 
 ### Verified setup notes (non-obvious)
 
-- Nested Docker needs `fuse-overlayfs`. Docker daemon configuration belongs to
-  the environment image; this repository intentionally has no `daemon.json`.
+- Nested Docker needs `fuse-overlayfs` on the Cloud Agent **environment image**.
+  This repository does **not** ship a `daemon.json` (`git ls-files -- daemon.json`
+  is empty by design). Do not document a repo-local daemon config — that was a
+  false claim in earlier judged notes.
 - The repository Compose stack pins DataHub `v1.7.0` and Postgres `16.4`. The `metadata-ingestion` container profiles the live `ecommerce` schema and writes it to GMS; it is intentionally a successful one-shot container while the services stay running.
 - Warehouse credentials are local-only (`agent` / `agent`, database `warehouse`). The role owns the seeded schema, so agents can exercise real reads and transactional writes.
 - Do not start `datahub docker quickstart` alongside the repository stack: both bind ports `8080` and `9002` and use separate state. Use `docker compose down --volumes` for a destructive clean reset.

@@ -2,7 +2,11 @@
 
 from datahub.ingestion.api.common import PipelineContext
 
-from nullspace.ingestion.demand import NullspaceDemandSource, NullspaceDemandSourceConfig
+from nullspace.ingestion.demand import (
+    NullspaceDemandSource,
+    NullspaceDemandSourceConfig,
+    merge_demand_custom,
+)
 
 
 def test_demand_source_emits_ghost_mcps_from_events():
@@ -37,3 +41,36 @@ def test_demand_source_emits_ghost_mcps_from_events():
     assert aspect.customProperties["nullspace.state"] == "ghost"
     assert "nullspace.contracts" in aspect.customProperties
     assert "nullspace.query_urns" in aspect.customProperties
+
+
+def test_merge_demand_custom_preserves_solid_lifecycle():
+    incoming = {
+        "nullspace.demand": "2",
+        "nullspace.want": "mrr",
+        "nullspace.state": "ghost",
+        "nullspace.requesters": "a,b",
+        "nullspace.claimed_by": "",
+        "nullspace.pr_url": "",
+        "nullspace.schema_source": "nullspace.ingestion.demand",
+        "nullspace.resolution": "[]",
+        "nullspace.contracts": "[]",
+        "nullspace.query_urns": "",
+    }
+    prior = {
+        "nullspace.state": "solid",
+        "nullspace.claimed_by": "builder-1",
+        "nullspace.pr_url": "https://github.com/Morkeeth/nullspace-dbt/pull/1",
+        "nullspace.builder_plan": '{"model_sql":"select 1"}',
+        "nullspace.builder_receipt": '{"outcome":"solidified"}',
+        "nullspace.assertion_urn": "urn:li:assertion:x",
+        "nullspace.schema_source": "builder",
+        "nullspace.resolution": '[{"event":"solidify"}]',
+        "nullspace.requesters": "a",
+    }
+    merged = merge_demand_custom(incoming, prior)
+    assert merged["nullspace.state"] == "solid"
+    assert merged["nullspace.pr_url"].startswith("https://github.com/")
+    assert merged["nullspace.assertion_urn"] == "urn:li:assertion:x"
+    assert merged["nullspace.builder_plan"]
+    assert merged["nullspace.requesters"] == "a,b"
+    assert merged["nullspace.demand"] == "2"

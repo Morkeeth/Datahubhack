@@ -38,6 +38,10 @@ Status values: `PROPOSED` · `DECIDED` · `OPEN` · `SUPERSEDED`.
 | D28 | 2026-08-09 | Demand lifecycle is first-class on stock GMS: structured properties `nullspace.demand/state/want`, Query entities for contracts, requester Ownership from first miss, institutionalMemory for PR URL. customProperties dual-written for board. Webhook solidifies on MERGED. | **DECIDED & verified on host `cursor`** | Cursor Lane A | smoke `ambitious first-class lifecycle` |
 | D29 | 2026-08-09 | Builder plans bind to the ghost URN (`nullspace.builder_plan`). `/tmp` plan file is write-through cache only. `NULLSPACE_STORE=memory` runs hydrate-only. | **DECIDED & verified on host `cursor`** | Cursor Lane A | `catalog-plan-survives-delete` → solid after wipe |
 | D30 | 2026-08-09 | Builder review receipts bind to the ghost URN (`nullspace.builder_receipt`). Solidify emits a native `DATA_SCHEMA` Assertion (EXACT_MATCH) + SUCCESS run event; URN stored as `nullspace.assertion_urn`. | **DECIDED & verified on host `cursor`** | Cursor Lane A | `catalog-receipt-assert-*`; `--review-want` |
+| D31 | 2026-08-09 | `solid_witness` returns native `assertion` + `queries`. Finalize/webhook refresh the catalog receipt after solidify. Demand ingest soft-merges claimed/solid lifecycle (no clobber). | **DECIDED & verified on host `cursor`** | Cursor Lane A | `witness-parity-*`; `merge_demand_custom` |
+| D32 | 2026-08-09 | Ghost MCP writes batch (`NULLSPACE_GHOST_EMIT_BATCH`, default 40) + oneshot corpuser/tag/SP defs; skip search-index wait on ghost path. Done-when: 629 harvest pairs &lt;60s. | **DECIDED & verified on host `cursor`** | Cursor Lane A | 629 pairs in 24.43s |
+| D33 | 2026-08-09 | Builder solidify refuses until the model materialises and returns ≥1 row (`dbt run`, or disclosed `warehouse_ctas` when Fusion lacks the adapter). | **DECIDED & verified on host `cursor`** | Cursor Lane A | materialise 2 rows; 0-row refuses |
+| D34 | 2026-08-09 | This repo does not ship `daemon.json`; AGENTS.md must not claim one exists. | **DECIDED** | Cursor Lane A | `git ls-files -- daemon.json` empty |
 
 ## Open items (not yet decisions)
 

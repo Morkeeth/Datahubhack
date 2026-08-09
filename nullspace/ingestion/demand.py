@@ -8,8 +8,12 @@ Emits Dataset MCPs under platform ``nullspace`` with:
   - datasetProperties (dual-write for board compatibility)
   - structuredProperties (nullspace.demand / state / want)
   - ownership (requesters as nullspace_requester from the first miss)
-  - globalTags (ghost)
+  - globalTags (ghost, or solid when soft-merging an existing solid URN)
   - Query entities for registered SQL contracts
+
+When the recipe has a DataHub graph and the URN is already ``claimed`` /
+``solid``, lifecycle fields (state, PR, plan, receipt, assertion, resolution)
+are preserved — re-ingest grows demand without clobbering fulfillment.
 
 LANE A (Cursor). Calls Lane B's harvest parser for log lines; does not edit it.
 """
@@ -57,7 +61,7 @@ from datahub.metadata.schema_classes import (
 )
 from pydantic import Field
 
-from nullspace import GHOST_TAG
+from nullspace import GHOST_TAG, SOLID_TAG
 from nullspace.client import now_ms
 from nullspace.urns import corpuser_urn, ghost_dataset_name, ghost_urn
 
@@ -66,6 +70,62 @@ _REQUESTER_TYPE_URN = "urn:li:ownershipType:nullspace_requester"
 _SP_DEMAND = "urn:li:structuredProperty:nullspace.demand"
 _SP_STATE = "urn:li:structuredProperty:nullspace.state"
 _SP_WANT = "urn:li:structuredProperty:nullspace.want"
+
+_LIFECYCLE_KEYS = (
+    "nullspace.state",
+    "nullspace.claimed_by",
+    "nullspace.pr_url",
+    "nullspace.builder_plan",
+    "nullspace.builder_receipt",
+    "nullspace.assertion_urn",
+    "nullspace.schema_source",
+    "nullspace.resolution",
+)
+
+
+def merge_demand_custom(
+    incoming: dict[str, str], prior: dict[str, str]
+) -> dict[str, str]:
+    """Upsert demand/contracts without clobbering claimed/solid lifecycle."""
+    out = dict(incoming)
+    prior_state = (prior.get("nullspace.state") or "").strip()
+    if prior_state not in {"claimed", "solid"}:
+        return out
+    out["nullspace.state"] = prior_state
+    for key in _LIFECYCLE_KEYS:
+        if key == "nullspace.state":
+            continue
+        if key in prior:
+            out[key] = prior[key]
+    # Union requesters so re-ingest can grow demand without dropping owners.
+    prior_agents = [
+        a.strip()
+        for a in (prior.get("nullspace.requesters") or "").split(",")
+        if a.strip()
+    ]
+    incoming_agents = [
+        a.strip()
+        for a in (incoming.get("nullspace.requesters") or "").split(",")
+        if a.strip()
+    ]
+    agents = list(dict.fromkeys([*prior_agents, *incoming_agents]))
+    out["nullspace.requesters"] = ",".join(agents)
+    out["nullspace.demand"] = str(len(agents))
+    return out
+
+
+def read_prior_custom(ctx: PipelineContext, urn: str) -> dict[str, str]:
+    """Best-effort read of existing datasetProperties when the recipe has a graph."""
+    graph = getattr(ctx, "graph", None)
+    if graph is None:
+        return {}
+    try:
+        props = graph.get_aspect(urn, DatasetPropertiesClass)
+    except Exception:  # noqa: BLE001
+        return {}
+    if props is None or not props.customProperties:
+        return {}
+    return dict(props.customProperties)
 
 
 class DemandEvent(ConfigModel):
@@ -256,18 +316,36 @@ class NullspaceDemandSource(Source):
                     ),
                 )
 
-            custom = {
-                "nullspace.demand": str(len(row["agents"])),
-                "nullspace.want": want,
-                "nullspace.state": "ghost",
-                "nullspace.requesters": ",".join(row["agents"]),
-                "nullspace.claimed_by": "",
-                "nullspace.pr_url": "",
-                "nullspace.schema_source": "nullspace.ingestion.demand",
-                "nullspace.resolution": json.dumps(row["resolution"]),
-                "nullspace.contracts": json.dumps(row["contracts"]),
-                "nullspace.query_urns": ",".join(query_urns),
-            }
+            custom = merge_demand_custom(
+                {
+                    "nullspace.demand": str(len(row["agents"])),
+                    "nullspace.want": want,
+                    "nullspace.state": "ghost",
+                    "nullspace.requesters": ",".join(row["agents"]),
+                    "nullspace.claimed_by": "",
+                    "nullspace.pr_url": "",
+                    "nullspace.schema_source": "nullspace.ingestion.demand",
+                    "nullspace.resolution": json.dumps(row["resolution"]),
+                    "nullspace.contracts": json.dumps(row["contracts"]),
+                    "nullspace.query_urns": ",".join(query_urns),
+                },
+                read_prior_custom(self.ctx, urn),
+            )
+            state = custom.get("nullspace.state") or "ghost"
+            tag_name = SOLID_TAG if state == "solid" else GHOST_TAG
+            entity_tag_urn = f"urn:li:tag:{tag_name}"
+            if tag_name == SOLID_TAG:
+                yield MetadataWorkUnit(
+                    id=f"tag-{SOLID_TAG}",
+                    mcp=MetadataChangeProposalWrapper(
+                        entityUrn=entity_tag_urn,
+                        aspect=TagPropertiesClass(
+                            name=SOLID_TAG,
+                            description="Nullspace solid — demand fulfilled",
+                        ),
+                    ),
+                )
+            label = state.upper()
             yield MetadataWorkUnit(
                 id=f"nullspace-demand-{name}-status",
                 mcp=MetadataChangeProposalWrapper(
@@ -280,7 +358,9 @@ class NullspaceDemandSource(Source):
                     entityUrn=urn,
                     aspect=DatasetPropertiesClass(
                         name=name,
-                        description=f"Nullspace GHOST (ingestion source) for demand: {want}",
+                        description=(
+                            f"Nullspace {label} (ingestion source) for demand: {want}"
+                        ),
                         customProperties=custom,
                     ),
                 ),
@@ -293,13 +373,13 @@ class NullspaceDemandSource(Source):
                         properties=[
                             StructuredPropertyValueAssignmentClass(
                                 propertyUrn=_SP_DEMAND,
-                                values=[float(len(row["agents"]))],
+                                values=[float(custom["nullspace.demand"])],
                                 created=audit,
                                 lastModified=audit,
                             ),
                             StructuredPropertyValueAssignmentClass(
                                 propertyUrn=_SP_STATE,
-                                values=["ghost"],
+                                values=[state],
                                 created=audit,
                                 lastModified=audit,
                             ),
@@ -318,7 +398,7 @@ class NullspaceDemandSource(Source):
                 mcp=MetadataChangeProposalWrapper(
                     entityUrn=urn,
                     aspect=GlobalTagsClass(
-                        tags=[TagAssociationClass(tag=tag_urn)]
+                        tags=[TagAssociationClass(tag=entity_tag_urn)]
                     ),
                 ),
             )

@@ -612,6 +612,143 @@ def merge_pull_request(pr_url: str) -> dict[str, Any]:
     return payload
 
 
+def materialize_dbt_model(
+    repo: Path,
+    model_name: str,
+    *,
+    expected_columns: list[str] | None = None,
+    model_sql: str | None = None,
+) -> dict[str, Any]:
+    """Materialise one model and require ≥1 warehouse row back.
+
+    Prefers ``dbt run``. When the installed CLI cannot run the warehouse adapter
+    (e.g. dbt Fusion without Postgres), falls back to ``CREATE TABLE AS`` of the
+    compiled model SQL — still a real warehouse materialisation, disclosed in
+    the receipt. Solidify must not stamp ``solid`` until a row comes back.
+    """
+    import psycopg
+
+    repo = repo.resolve()
+    if not (repo / "dbt_project.yml").exists():
+        raise ValueError(
+            "solidify refused: dbt_project.yml missing; "
+            f"shortfall is 1 dbt project at {repo}"
+        )
+    model_path = repo / "models" / f"{model_name}.sql"
+    raw_sql = model_sql
+    if raw_sql is None and model_path.exists():
+        raw_sql = model_path.read_text(encoding="utf-8")
+
+    profiles_dir = os.environ.get("DBT_PROFILES_DIR", str(Path.home() / ".dbt"))
+    env = {**os.environ, "DBT_PROFILES_DIR": profiles_dir}
+    run = subprocess.run(
+        [
+            "dbt",
+            "run",
+            "--select",
+            model_name,
+            "--project-dir",
+            str(repo),
+            "--profiles-dir",
+            profiles_dir,
+        ],
+        cwd=repo,
+        capture_output=True,
+        text=True,
+        env=env,
+    )
+    method = "dbt_run"
+    if run.returncode != 0:
+        combined = f"{run.stdout or ''}\n{run.stderr or ''}"
+        adapter_gap = (
+            "adapter is not yet supported" in combined
+            or "dbt Fusion" in combined
+            or "InvalidConfig" in combined
+        )
+        if not adapter_gap or not raw_sql:
+            detail = combined[-1200:]
+            raise ValueError(
+                "solidify refused: dbt run failed; shortfall is 1 materialised model; "
+                f"{detail.strip()[:500]}"
+            )
+        method = "warehouse_ctas"
+        _materialize_sql_as_table(
+            model_name=model_name,
+            model_sql=raw_sql,
+            source_schema=os.getenv("NULLSPACE_DBT_SCHEMA", "ecommerce"),
+        )
+
+    cfg = settings()
+    schema = os.getenv("NULLSPACE_DBT_SCHEMA", "ecommerce")
+    safe_schema = _identifier(schema)
+    safe_model = _identifier(model_name)
+    with psycopg.connect(cfg.warehouse_dsn) as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                f'SELECT * FROM "{safe_schema}"."{safe_model}" LIMIT 5'
+            )
+            rows = cursor.fetchall()
+            columns = [col.name for col in cursor.description or []]
+        connection.rollback()
+
+    if not rows:
+        raise ValueError(
+            "solidify refused: model materialised but returned 0 rows; "
+            f"shortfall is ≥1 row from {schema}.{model_name}"
+        )
+    if expected_columns:
+        missing = [c for c in expected_columns if c not in columns]
+        if missing:
+            raise ValueError(
+                f"solidify refused: materialised columns {columns}; "
+                f"shortfall is {len(missing)} fields {missing}"
+            )
+    return {
+        "status": "materialised",
+        "method": method,
+        "model": model_name,
+        "schema": schema,
+        "row_count": len(rows),
+        "columns": columns,
+        "dbt_stdout_tail": (run.stdout or "")[-400:],
+    }
+
+
+def _materialize_sql_as_table(
+    *, model_name: str, model_sql: str, source_schema: str
+) -> None:
+    """Compile dbt source() macros and CREATE TABLE AS in the warehouse."""
+    import psycopg
+
+    executable = model_sql
+    # Resolve {{ source('warehouse_source', 'table') }} → "schema"."table"
+    for match in re.finditer(
+        r"\{\{\s*source\(\s*'warehouse_source'\s*,\s*'([^']+)'\s*\)\s*\}\}",
+        model_sql,
+    ):
+        table = match.group(1)
+        relation = f'"{_identifier(source_schema)}"."{_identifier(table)}"'
+        executable = executable.replace(match.group(0), relation)
+    executable = executable.strip().rstrip(";")
+    if "{{" in executable or "}}" in executable:
+        raise ValueError(
+            "solidify refused: model SQL still has unresolved Jinja; "
+            "shortfall is 1 executable materialisation"
+        )
+    schema = os.getenv("NULLSPACE_DBT_SCHEMA", "ecommerce")
+    ddl = (
+        f'CREATE TABLE IF NOT EXISTS "{_identifier(schema)}"."{_identifier(model_name)}" '
+        f"AS {executable}"
+    )
+    # Replace so re-solidify picks up SQL changes.
+    drop = f'DROP TABLE IF EXISTS "{_identifier(schema)}"."{_identifier(model_name)}" CASCADE'
+    with psycopg.connect(settings().warehouse_dsn) as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(drop)
+            cursor.execute(ddl)
+        connection.commit()
+
+
 def solidify_after_merge(
     ns: Nullspace,
     want: str,
@@ -686,12 +823,68 @@ def solidify_after_merge(
             queries=ns.contracts_for(want),
             decision_reason="finalize after merge: compile from catalog contracts",
         )
-    return ns.solidify(
+    mat = _materialize_before_solid(ns, want, plan, ghost)
+    solid = ns.solidify(
         want,
         schema_fields=plan.fields,
         upstream_urns=plan.all_upstreams(),
         schema_source=plan.schema_source,
     )
+    # Refresh the catalog receipt so merge→solid carries assertion witness,
+    # not a stale claimed-era snapshot.
+    _write_review_receipt(
+        want=want,
+        reason=plan.decision_reason,
+        plan=plan,
+        result={
+            "status": "solidified",
+            "urn": solid.urn,
+            "pr_url": solid.pr_url,
+            "state": solid.state,
+            "dbt_materialisation": mat,
+        },
+    )
+    return solid
+
+
+def _materialize_before_solid(
+    ns: Nullspace, want: str, plan: BuildPlan, ghost: Ghost
+) -> dict[str, Any]:
+    """Refuse solidify until dbt run materialises ≥1 row for the ghost model."""
+    cfg = settings()
+    repo = Path(cfg.dbt_repo_path).resolve()
+    model_path = repo / "models" / f"{ghost.dataset_name}.sql"
+    if not model_path.exists():
+        write_dbt_model(ghost, repo, plan)
+    try:
+        mat = materialize_dbt_model(
+            repo,
+            ghost.dataset_name,
+            expected_columns=[str(field["name"]) for field in plan.fields],
+            model_sql=plan.model_sql.format(
+                want=ghost.want,
+                requesters=", ".join(ghost.requesters),
+                urn=ghost.urn,
+            )
+            if "{want}" in plan.model_sql
+            else plan.model_sql,
+        )
+    except Exception as exc:
+        detail = f"{type(exc).__name__}: {str(exc)[:500]}"
+        ns.record_resolution(
+            want,
+            agent_id=ghost.claimed_by or "builder",
+            event="dbt_materialise_failed",
+            detail=detail,
+        )
+        raise
+    ns.record_resolution(
+        want,
+        agent_id=ghost.claimed_by or "builder",
+        event="dbt_materialised",
+        detail=json.dumps(mat, sort_keys=True),
+    )
+    return mat
 
 
 def build_and_solidify(ns: Nullspace, want: str, *, builder_id: str = "builder-1") -> Ghost:
@@ -766,6 +959,7 @@ def build_and_solidify(ns: Nullspace, want: str, *, builder_id: str = "builder-1
         if cfg.auto_merge_pr:
             return solidify_after_merge(ns, want, builder_id=builder_id, merge=True)
         return ns.store.get(want) or ghost
+    _materialize_before_solid(ns, want, plan, ghost)
     return ns.solidify(
         want,
         schema_fields=plan.fields,
@@ -869,6 +1063,8 @@ def _write_review_receipt(
                     "ownership": witness.get("ownership"),
                     "tags": witness.get("tags"),
                     "assertion_urn": properties.get("nullspace.assertion_urn"),
+                    "assertion": witness.get("assertion"),
+                    "queries": witness.get("queries"),
                 },
                 "honest_boundary": (
                     "file:// is a local change reference, not a pull request"
@@ -1001,12 +1197,15 @@ def review_receipt(
         "ownership": returned_now.get("ownership"),
         "tags": returned_now.get("tags"),
         "assertion_urn": current_properties.get("nullspace.assertion_urn"),
+        "assertion": returned_now.get("assertion"),
+        "queries": returned_now.get("queries"),
     }
-    # Older receipts omit assertion_urn — compare without it when absent.
+    # Older receipts omit newer witness keys — compare without them when absent.
     recorded_cmp = dict(recorded)
     current_cmp = dict(current)
-    if "assertion_urn" not in recorded:
-        current_cmp.pop("assertion_urn", None)
+    for key in ("assertion_urn", "assertion", "queries"):
+        if key not in recorded:
+            current_cmp.pop(key, None)
     return {
         "receipt": source,
         "want": receipt["want"],
@@ -1017,6 +1216,7 @@ def review_receipt(
         "generated_sql": receipt.get("generated_sql"),
         "honest_boundary": receipt.get("honest_boundary"),
         "assertion_urn": current_properties.get("nullspace.assertion_urn"),
+        "assertion": returned_now.get("assertion"),
     }
 
 

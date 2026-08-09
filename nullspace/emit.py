@@ -7,6 +7,7 @@ import json
 from typing import Any
 
 from datahub.emitter.mce_builder import make_assertion_urn
+from datahub.emitter.mcp import MetadataChangeProposalWrapper
 from datahub.metadata.schema_classes import (
     AssertionInfoClass,
     AssertionResultClass,
@@ -75,37 +76,59 @@ def _audit() -> AuditStampClass:
     return AuditStampClass(time=now_ms(), actor=_ACTOR)
 
 
-def ensure_structured_property_definitions(dh: DataHubClient) -> None:
+def ensure_structured_property_definitions(
+    dh: DataHubClient, *, queue: list | None = None
+) -> None:
     """Register nullspace.* structured properties on stock GMS (idempotent)."""
+    if dh.oneshot_done("structuredProperties:nullspace"):
+        return
     audit = _audit()
     for urn, qname, value_type, display in _STRUCTURED_DEFS:
-        dh.emit_aspect(
-            urn,
-            StructuredPropertyDefinitionClass(
-                qualifiedName=qname,
-                displayName=display,
-                valueType=value_type,
-                entityTypes=["urn:li:entityType:datahub.dataset"],
-                cardinality="SINGLE",
-                description=(
-                    f"{display} — demand-side metadata for assets that do not "
-                    "exist yet (Nullspace)"
-                ),
-                immutable=False,
-                created=audit,
-                lastModified=audit,
+        aspect = StructuredPropertyDefinitionClass(
+            qualifiedName=qname,
+            displayName=display,
+            valueType=value_type,
+            entityTypes=["urn:li:entityType:datahub.dataset"],
+            cardinality="SINGLE",
+            description=(
+                f"{display} — demand-side metadata for assets that do not "
+                "exist yet (Nullspace)"
             ),
+            immutable=False,
+            created=audit,
+            lastModified=audit,
         )
-        returned = dh.graph.get_aspect(urn, StructuredPropertyDefinitionClass)
-        if returned is None or returned.qualifiedName != qname:
-            raise RuntimeError(
-                "DataHub structuredProperty definition read-after-write failed: "
-                f"returned {returned!r}, expected {qname!r}"
-            )
+        if queue is not None:
+            queue.append(MetadataChangeProposalWrapper(entityUrn=urn, aspect=aspect))
+        else:
+            dh.emit_aspect(urn, aspect)
+            returned = dh.graph.get_aspect(urn, StructuredPropertyDefinitionClass)
+            if returned is None or returned.qualifiedName != qname:
+                raise RuntimeError(
+                    "DataHub structuredProperty definition read-after-write failed: "
+                    f"returned {returned!r}, expected {qname!r}"
+                )
+    dh.mark_oneshot("structuredProperties:nullspace")
 
 
-def emit_ghost(dh: DataHubClient, ghost: Ghost) -> dict[str, Any]:
-    """Upsert native aspects, then return DataHub's read-back witness."""
+def emit_ghost(
+    dh: DataHubClient,
+    ghost: Ghost,
+    *,
+    strict: bool | None = None,
+) -> dict[str, Any]:
+    """Upsert native aspects, then return DataHub's read-back witness.
+
+    Ghost (demand) writes are batched ASYNC and skip search-index wait — required
+    for harvest-scale throughput. Solid writes stay strict (SYNC + full verify).
+    """
+    from datahub.emitter.mcp import MetadataChangeProposalWrapper
+    from datahub.emitter.rest_emitter import EmitMode
+
+    if strict is None:
+        strict = ghost.state == "solid"
+    immediate = ghost.state != "ghost"  # claim/solid must not sit in the harvest buffer
+
     tag = SOLID_TAG if ghost.state == "solid" else GHOST_TAG
     description = (
         f"Nullspace {'SOLID' if ghost.state == 'solid' else 'GHOST'} for demand: {ghost.want}"
@@ -148,29 +171,82 @@ def emit_ghost(dh: DataHubClient, ghost: Ghost) -> dict[str, Any]:
         customProperties=custom,
     )
     tag_urn = f"urn:li:tag:{tag}"
-    dh.emit_aspect(
-        tag_urn,
-        TagPropertiesClass(name=tag, description=f"Nullspace {tag} marker"),
-    )
-    returned_tag = dh.graph.get_aspect(tag_urn, TagPropertiesClass)
-    if returned_tag is None or returned_tag.name != tag:
-        raise RuntimeError(
-            f"DataHub tag read-after-write failed: returned {returned_tag!r}, expected {tag!r}"
+    queue: list[MetadataChangeProposalWrapper] = []
+
+    ensure_structured_property_definitions(dh, queue=None if strict else queue)
+
+    if not dh.oneshot_done(tag_urn):
+        queue.append(
+            MetadataChangeProposalWrapper(
+                entityUrn=tag_urn,
+                aspect=TagPropertiesClass(
+                    name=tag, description=f"Nullspace {tag} marker"
+                ),
+            )
         )
-    dh.emit_aspect(ghost.urn, props)
-    dh.emit_aspect(
-        ghost.urn,
-        GlobalTagsClass(tags=[TagAssociationClass(tag=tag_urn)]),
+        dh.mark_oneshot(tag_urn)
+
+    queue.append(MetadataChangeProposalWrapper(entityUrn=ghost.urn, aspect=props))
+    queue.append(
+        MetadataChangeProposalWrapper(
+            entityUrn=ghost.urn,
+            aspect=GlobalTagsClass(tags=[TagAssociationClass(tag=tag_urn)]),
+        )
     )
 
-    # First-class lifecycle (maintainer-visible). Dual-write customProperties so the
-    # GraphQL board keeps working without a Lane B change this weekend.
-    _emit_structured_lifecycle(dh, ghost)
-    if ghost.requesters:
-        _emit_requester_ownership(dh, ghost)
-    if ghost.pr_url:
-        _emit_pr_institutional_memory(dh, ghost)
+    audit = _audit()
+    queue.append(
+        MetadataChangeProposalWrapper(
+            entityUrn=ghost.urn,
+            aspect=StructuredPropertiesClass(
+                properties=[
+                    StructuredPropertyValueAssignmentClass(
+                        propertyUrn=_SP_DEMAND,
+                        values=[float(ghost.demand)],
+                        created=audit,
+                        lastModified=audit,
+                    ),
+                    StructuredPropertyValueAssignmentClass(
+                        propertyUrn=_SP_STATE,
+                        values=[ghost.state],
+                        created=audit,
+                        lastModified=audit,
+                    ),
+                    StructuredPropertyValueAssignmentClass(
+                        propertyUrn=_SP_WANT,
+                        values=[ghost.want],
+                        created=audit,
+                        lastModified=audit,
+                    ),
+                ]
+            ),
+        )
+    )
 
+    if ghost.requesters:
+        _queue_requester_ownership(dh, ghost, queue, verify=strict)
+
+    if ghost.pr_url:
+        queue.append(
+            MetadataChangeProposalWrapper(
+                entityUrn=ghost.urn,
+                aspect=InstitutionalMemoryClass(
+                    elements=[
+                        InstitutionalMemoryMetadataClass(
+                            url=ghost.pr_url,
+                            description=(
+                                "Nullspace builder change reference — merge solidifies this ghost"
+                                if str(ghost.pr_url).startswith("https://github.com/")
+                                else "Nullspace local change reference (not a GitHub PR)"
+                            ),
+                            createStamp=_audit(),
+                        )
+                    ]
+                ),
+            )
+        )
+
+    assertion_urn = None
     if ghost.state == "solid":
         if not ghost.schema_fields or not ghost.upstream_urns:
             raise RuntimeError(
@@ -179,18 +255,85 @@ def emit_ghost(dh: DataHubClient, ghost: Ghost) -> dict[str, Any]:
                 f"{len(ghost.upstream_urns)} upstreams; shortfall is a hydrated "
                 "builder schema + lineage (refusing empty overwrite)"
             )
-        _emit_schema(dh, ghost)
-        _emit_lineage(dh, ghost)
-        assertion_urn = _emit_demand_schema_assertion(dh, ghost)
-        custom["nullspace.assertion_urn"] = assertion_urn
-        dh.emit_aspect(
-            ghost.urn,
-            DatasetPropertiesClass(
-                name=ghost.dataset_name,
-                description=description,
-                customProperties=custom,
-            ),
+        queue.append(
+            MetadataChangeProposalWrapper(
+                entityUrn=ghost.urn, aspect=_schema_metadata_for_ghost(ghost)
+            )
         )
+        queue.append(
+            MetadataChangeProposalWrapper(
+                entityUrn=ghost.urn,
+                aspect=UpstreamLineageClass(
+                    upstreams=[
+                        UpstreamClass(
+                            dataset=urn,
+                            type=DatasetLineageTypeClass.TRANSFORMED,
+                            auditStamp=_audit(),
+                        )
+                        for urn in ghost.upstream_urns
+                    ]
+                ),
+            )
+        )
+        assertion_urn, assertion_mcps = _build_demand_schema_assertion(ghost)
+        queue.extend(assertion_mcps)
+        custom["nullspace.assertion_urn"] = assertion_urn
+        queue.append(
+            MetadataChangeProposalWrapper(
+                entityUrn=ghost.urn,
+                aspect=DatasetPropertiesClass(
+                    name=ghost.dataset_name,
+                    description=description,
+                    customProperties=custom,
+                ),
+            )
+        )
+
+    mode = EmitMode.SYNC_PRIMARY
+    if not immediate:
+        # Cross-miss batching: many ghosts, one HTTP round-trip per BATCH.
+        dh.buffer_ghost_emits(queue, urn=ghost.urn, custom=custom)
+        return {
+            "urn": ghost.urn,
+            "properties": dict(custom),
+            "tags": [tag_urn],
+            "schemaMetadata": None,
+            "lineage": {"upstreams": [], "count": 0},
+            "ownership": {"owners": [], "count": 0},
+            "structuredProperties": [],
+            "institutionalMemory": [],
+            "assertion": None,
+            "queries": [],
+            "emit_mode": "buffered_batch",
+        }
+
+    # Claimed / solid: flush harvest buffer, then emit this transition now.
+    dh.flush_ghost_emits()
+    dh.emit_mcps(queue, emit_mode=mode)
+    dh.remember_properties(ghost.urn, custom)
+
+    if not strict:
+        # Claimed (or other non-ghost): props witness only — no schema/lineage yet.
+        return {
+            "urn": ghost.urn,
+            "properties": dict(custom),
+            "tags": [tag_urn],
+            "schemaMetadata": None,
+            "lineage": {"upstreams": [], "count": 0},
+            "ownership": {"owners": [], "count": 0},
+            "structuredProperties": [],
+            "institutionalMemory": [],
+            "assertion": None,
+            "queries": [],
+            "emit_mode": "sync_primary_immediate",
+        }
+
+    returned_tag = dh.graph.get_aspect(tag_urn, TagPropertiesClass)
+    if returned_tag is None or returned_tag.name != tag:
+        raise RuntimeError(
+            f"DataHub tag read-after-write failed: returned {returned_tag!r}, expected {tag!r}"
+        )
+    dh.mark_oneshot(tag_urn)
 
     witness = dh.solid_witness(ghost.urn)
     if not dh.wait_for_search_urn(ghost.want, ghost.urn):
@@ -198,22 +341,136 @@ def emit_ghost(dh: DataHubClient, ghost: Ghost) -> dict[str, Any]:
             "DataHub search-index read-after-write failed: "
             f"{ghost.urn!r} was not returned for {ghost.want!r}"
         )
-    if ghost.state == "solid":
-        _verify_solid_witness(ghost, witness)
-        indexed_upstreams = dh.wait_for_indexed_upstreams(
-            ghost.urn, set(ghost.upstream_urns)
+    _verify_solid_witness(ghost, witness)
+    indexed_upstreams = dh.wait_for_indexed_upstreams(
+        ghost.urn, set(ghost.upstream_urns)
+    )
+    witness["indexedLineage"] = {
+        "upstreams": sorted(indexed_upstreams),
+        "count": len(indexed_upstreams),
+    }
+    if not set(ghost.upstream_urns).issubset(indexed_upstreams):
+        raise RuntimeError(
+            "DataHub lineage index read-after-write failed: "
+            f"returned {sorted(indexed_upstreams)}, "
+            f"expected {sorted(ghost.upstream_urns)}"
         )
-        witness["indexedLineage"] = {
-            "upstreams": sorted(indexed_upstreams),
-            "count": len(indexed_upstreams),
-        }
-        if not set(ghost.upstream_urns).issubset(indexed_upstreams):
-            raise RuntimeError(
-                "DataHub lineage index read-after-write failed: "
-                f"returned {sorted(indexed_upstreams)}, "
-                f"expected {sorted(ghost.upstream_urns)}"
-            )
     return witness
+
+
+def _queue_requester_ownership(
+    dh: DataHubClient,
+    ghost: Ghost,
+    queue: list,
+    *,
+    verify: bool,
+) -> None:
+    """Queue requester Owners; verify only on the strict (solid) path."""
+    if not dh.oneshot_done(_REQUESTER_TYPE_URN):
+        queue.append(
+            MetadataChangeProposalWrapper(
+                entityUrn=_REQUESTER_TYPE_URN,
+                aspect=OwnershipTypeKeyClass(id=_REQUESTER_TYPE_ID),
+            )
+        )
+        queue.append(
+            MetadataChangeProposalWrapper(
+                entityUrn=_REQUESTER_TYPE_URN,
+                aspect=OwnershipTypeInfoClass(
+                    name="Nullspace requester",
+                    description=(
+                        "AI agent whose catalog miss created demand for this asset"
+                    ),
+                    created=_audit(),
+                    lastModified=_audit(),
+                ),
+            )
+        )
+        dh.mark_oneshot(_REQUESTER_TYPE_URN)
+
+    owners = []
+    for requester in ghost.requesters:
+        owner_urn = corpuser_urn(requester)
+        if not dh.oneshot_done(owner_urn):
+            queue.append(
+                MetadataChangeProposalWrapper(
+                    entityUrn=owner_urn,
+                    aspect=CorpUserInfoClass(
+                        active=True,
+                        displayName=requester,
+                        title="AI requester agent",
+                        system=True,
+                        customProperties={
+                            "nullspace.role": "requester",
+                            "nullspace.asset": ghost.urn,
+                        },
+                    ),
+                )
+            )
+            dh.mark_oneshot(owner_urn)
+        owners.append(
+            OwnerClass(
+                owner=owner_urn,
+                type=OwnershipTypeClass.CUSTOM,
+                typeUrn=_REQUESTER_TYPE_URN,
+            )
+        )
+    queue.append(
+        MetadataChangeProposalWrapper(
+            entityUrn=ghost.urn,
+            aspect=OwnershipClass(owners=owners, lastModified=_audit()),
+        )
+    )
+    if verify and not dh.oneshot_done(f"verify:{_REQUESTER_TYPE_URN}"):
+        # Deferred verify happens after batch flush in solid path via solid_witness.
+        pass
+
+
+def _build_demand_schema_assertion(
+    ghost: Ghost,
+) -> tuple[str, list]:
+    """Build AssertionInfo + run-event MCPs for solidify (caller batches them)."""
+    from datahub.emitter.mce_builder import make_assertion_urn
+    from datahub.emitter.mcp import MetadataChangeProposalWrapper
+
+    assertion_urn = make_assertion_urn(f"nullspace-schema-{ghost.dataset_name}")
+    schema = _schema_metadata_for_ghost(ghost)
+    info = AssertionInfoClass(
+        type=AssertionTypeClass.DATA_SCHEMA,
+        schemaAssertion=SchemaAssertionInfoClass(
+            entity=ghost.urn,
+            schema=schema,
+            compatibility=SchemaAssertionCompatibilityClass.EXACT_MATCH,
+        ),
+        description=(
+            f"Nullspace demand schema for {ghost.want!r}: "
+            f"{len(ghost.schema_fields)} fields must match exactly after solidify"
+        ),
+        source=AssertionSourceClass(type=AssertionSourceTypeClass.EXTERNAL),
+        customProperties={
+            "nullspace.want": ghost.want,
+            "nullspace.demand": str(ghost.demand),
+            "nullspace.origin": "solidify",
+        },
+    )
+    run = AssertionRunEventClass(
+        timestampMillis=now_ms(),
+        runId=f"nullspace-solidify-{ghost.dataset_name}-{now_ms()}",
+        asserteeUrn=ghost.urn,
+        assertionUrn=assertion_urn,
+        status=AssertionRunStatusClass.COMPLETE,
+        result=AssertionResultClass(
+            type=AssertionResultTypeClass.SUCCESS,
+            nativeResults={
+                "fields": ",".join(str(f["name"]) for f in ghost.schema_fields),
+                "demand": str(ghost.demand),
+            },
+        ),
+    )
+    return assertion_urn, [
+        MetadataChangeProposalWrapper(entityUrn=assertion_urn, aspect=info),
+        MetadataChangeProposalWrapper(entityUrn=assertion_urn, aspect=run),
+    ]
 
 
 def _emit_structured_lifecycle(dh: DataHubClient, ghost: Ghost) -> None:
@@ -316,50 +573,15 @@ def _emit_schema(dh: DataHubClient, ghost: Ghost) -> None:
 
 
 def _emit_demand_schema_assertion(dh: DataHubClient, ghost: Ghost) -> str:
-    """Native DATA_SCHEMA assertion: solid schema matches demand contracts (EXACT)."""
-    assertion_urn = make_assertion_urn(f"nullspace-schema-{ghost.dataset_name}")
-    schema = _schema_metadata_for_ghost(ghost)
-    info = AssertionInfoClass(
-        type=AssertionTypeClass.DATA_SCHEMA,
-        schemaAssertion=SchemaAssertionInfoClass(
-            entity=ghost.urn,
-            schema=schema,
-            compatibility=SchemaAssertionCompatibilityClass.EXACT_MATCH,
-        ),
-        description=(
-            f"Nullspace demand schema for {ghost.want!r}: "
-            f"{len(ghost.schema_fields)} fields must match exactly after solidify"
-        ),
-        source=AssertionSourceClass(type=AssertionSourceTypeClass.EXTERNAL),
-        customProperties={
-            "nullspace.want": ghost.want,
-            "nullspace.demand": str(ghost.demand),
-            "nullspace.origin": "solidify",
-        },
-    )
-    dh.emit_aspect(assertion_urn, info)
+    """Emit schema assertion (solid path helper for callers that are not batched)."""
+    assertion_urn, mcps = _build_demand_schema_assertion(ghost)
+    dh.emit_mcps(mcps)
     returned = dh.graph.get_aspect(assertion_urn, AssertionInfoClass)
     if returned is None or returned.type != AssertionTypeClass.DATA_SCHEMA:
         raise RuntimeError(
             "DataHub assertionInfo read-after-write failed: "
             f"returned {returned!r}"
         )
-
-    run = AssertionRunEventClass(
-        timestampMillis=now_ms(),
-        runId=f"nullspace-solidify-{ghost.dataset_name}-{now_ms()}",
-        asserteeUrn=ghost.urn,
-        assertionUrn=assertion_urn,
-        status=AssertionRunStatusClass.COMPLETE,
-        result=AssertionResultClass(
-            type=AssertionResultTypeClass.SUCCESS,
-            nativeResults={
-                "fields": ",".join(str(f["name"]) for f in ghost.schema_fields),
-                "demand": str(ghost.demand),
-            },
-        ),
-    )
-    dh.emit_aspect(assertion_urn, run)
     return assertion_urn
 
 
@@ -483,6 +705,30 @@ def _verify_solid_witness(ghost: Ghost, witness: dict[str, Any]) -> None:
         failures.append(
             f"tags returned {witness.get('tags', [])}, expected {expected_tag!r}"
         )
+    props = witness.get("properties") or {}
+    assertion_urn = props.get("nullspace.assertion_urn")
+    assertion = witness.get("assertion")
+    if not assertion_urn:
+        failures.append("missing nullspace.assertion_urn on solid dataset properties")
+    elif not assertion or assertion.get("urn") != assertion_urn:
+        failures.append(
+            f"assertion witness missing or mismatched: returned {assertion!r}, "
+            f"expected urn {assertion_urn!r}"
+        )
+    elif str(assertion.get("type") or "") not in {
+        "DATA_SCHEMA",
+        "AssertionType.DATA_SCHEMA",
+    } and "DATA_SCHEMA" not in str(assertion.get("type") or ""):
+        failures.append(
+            f"assertion type returned {assertion.get('type')!r}, expected DATA_SCHEMA"
+        )
+    else:
+        asserted_fields = set(assertion.get("fields") or [])
+        if not expected_fields.issubset(asserted_fields):
+            failures.append(
+                f"assertion fields returned {sorted(asserted_fields)}, "
+                f"expected {sorted(expected_fields)}"
+            )
     if failures:
         raise RuntimeError(
             "DataHub solid read-after-write failed: "
