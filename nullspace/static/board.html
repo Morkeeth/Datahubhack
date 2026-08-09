@@ -1,191 +1,205 @@
 <!doctype html>
 <html lang="en">
 <head>
-<meta charset="utf-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Nullspace</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Nullspace — a catalog entry for data that does not exist yet</title>
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@300;400;600&display=swap" rel="stylesheet">
-<!--
-  THE NUMBERS, AND WHERE THEY COME FROM
-  ─────────────────────────────────────
-  Read live from a running DataHub at /api/board. Nothing on this page is
-  computed from a local file. If the catalog is unreachable the page says so and
-  shows nothing, because Nullspace keeps no copy of its own — a board that
-  outlives the catalog would prove the catalog was never load-bearing.
-
-    demand        datasetProperties.nullspace.demand on the ghost URN
-    requesters    ownership aspect, falling back to nullspace.requesters
-    state / tags  globalTags — urn:li:tag:ghost or urn:li:tag:solid
-    schema        schemaMetadata on the solid asset
-    upstream      lineage(UPSTREAM)
-    history       nullspace.resolution, written as each event happened
-
-  THE COLOUR ARGUMENT
-  ───────────────────
-  Five neutrals and one accent. The accent is spent on the MISS — an asset agents
-  wanted and could not get — and nowhere else on the page. When a want becomes
-  real its marks turn to ink and the accent leaves it entirely. That is what
-  being filled looks like. Nothing is red-as-alarm here: unmet demand is not a
-  failure of the system, it is the thing the system exists to show.
-
-  THE MARKS
-  ─────────
-  One mark is one agent that asked. Countable by eye, assertable in the DOM: the
-  marks in a row equal the demand printed beside them, exactly. No rounding, no
-  scaling, no chart library, no dependency.
-
-  There is no monospace on this page because there is no code on this page.
--->
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@200;400;600&display=swap" rel="stylesheet">
 <style>
-  :root {
-    --n0: #ffffff;
-    --n1: #f2f1ef;
-    --n2: #d8d5d1;
-    --n3: #6f6a64;
-    --n4: #16150f;
-    --accent: #b8482c; /* THE MISS. one region. nowhere else. */
-  }
-  * { box-sizing: border-box; }
-  body {
-    margin: 0; background: var(--n0); color: var(--n4);
-    font-family: "IBM Plex Sans", sans-serif; font-weight: 300;
-    font-size: 15px; line-height: 1.5; -webkit-font-smoothing: antialiased;
-  }
-  .wrap { max-width: 62rem; margin: 0 auto; padding: 0 1.5rem 5rem; }
-  h1 { font-weight: 600; font-size: clamp(2rem, 5vw, 2.75rem); letter-spacing: -0.03em; margin: 4rem 0 0.5rem; }
-  .lede { color: var(--n3); max-width: 36rem; margin: 0 0 1.5rem; }
-  .label { font-size: 10px; text-transform: uppercase; letter-spacing: .2em; font-weight: 600; color: var(--n3); }
-  a { color: var(--n4); text-underline-offset: 3px; }
-  .meta { color: var(--n3); font-size: 13px; }
+/* ==========================================================================
+   INSTRUMENT — the demand board
+   --------------------------------------------------------------------------
+   TYPE — ONE interface typeface: IBM Plex Sans, three weights (200/400/600).
+   Labels are the same face uppercase at 10px with wide tracking. There is no
+   monospace on this page, because there is no code on this page.
 
-  .ledger { border-top: 1px solid var(--n2); margin-top: 2rem; padding-top: 1.25rem;
-            display: flex; gap: 3rem; flex-wrap: wrap; }
-  .ledger .n { font-weight: 600; font-size: 1.5rem; letter-spacing: -0.02em; display: block; }
+   COLOUR — nothing here is wrong, so nothing here is red. A want nobody has
+   built yet is not a fault; it is the measurement.
 
-  .row { border-top: 1px solid var(--n2); padding: 1.5rem 0; display: grid;
-         grid-template-columns: 1fr 16rem; gap: 1.5rem; }
-  .row h2 { font-size: 1.25rem; font-weight: 400; letter-spacing: -0.01em; margin: 0 0 0.35rem; }
-  .urn { color: var(--n3); font-size: 12px; overflow-wrap: anywhere; margin: 0.25rem 0 0.75rem; }
-  .count { font-weight: 600; font-size: 1.125rem; margin-bottom: 0.35rem; }
-  .marks { display: flex; flex-wrap: wrap; gap: 3px; align-content: flex-start; }
-  .m { width: 7px; height: 14px; background: var(--n4); display: block; }
-  .m.miss { background: var(--accent); }
+     GROUND  the instrument's own quiet
+     BONE    asked for, and still not built
+     SLATE   asked for, and built — the mark loses its brightness when the
+             thing exists, because that is what being answered looks like
+     ICE     reserved for ONE region, out of range. Ice anywhere else is a bug.
 
-  .facts { margin-top: 0.75rem; }
-  .facts div { font-size: 13px; margin-bottom: 0.2rem; }
-  .facts .k { color: var(--n3); display: inline-block; min-width: 7.5rem; }
-  .history { margin-top: 1rem; }
-  .history div { font-size: 12px; color: var(--n3); margin-bottom: 0.15rem; }
-  .history .t { display: inline-block; min-width: 5rem; }
-  .history .e { display: inline-block; min-width: 8rem; color: var(--n4); }
+   GRAPHS — countable marks. One mark is one agent that asked. The marks in a
+   row equal the figure printed beside them, exactly. No library, no rounding.
 
-  .waiting, .gone { border: 1px solid var(--n2); padding: 3rem 2rem; margin-top: 2rem; color: var(--n3); }
-  .gone h2 { color: var(--n4); font-weight: 400; margin: 0 0 0.75rem; }
-  .limits { border-top: 1px solid var(--n2); margin-top: 3rem; padding-top: 1.25rem;
-            color: var(--n3); font-size: 13px; max-width: 40rem; }
-  @media (max-width: 720px) { .row { grid-template-columns: 1fr; } }
+   NUMBERS — read live from a running DataHub at /api/board. This page keeps no
+   copy of its own: a board that outlived the catalog would prove the catalog
+   was never load-bearing, so when GMS stops answering this goes blank.
+     demand nullspace.demand · requesters ownership · tags globalTags
+     schema schemaMetadata · upstream lineage(UPSTREAM) · history nullspace.resolution
+========================================================================== */
+:root{
+  --ground:#14171B; --bone:#E9E7E1; --slate:#333B45; --slate-lit:#4A545F;
+  --dim:#858C96; --dimmer:#5B626C; --rule:#242A31; --ice:#7FB3D0;
+  --sans:"IBM Plex Sans",system-ui,sans-serif;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html{-webkit-text-size-adjust:100%}
+body{background:var(--ground);color:var(--bone);font:200 17px/1.62 var(--sans);
+  -webkit-font-smoothing:antialiased;padding-bottom:110px}
+.in{max-width:1120px;margin:0 auto;padding:0 40px}
+.lab{font-size:10px;font-weight:600;line-height:1;letter-spacing:.2em;text-transform:uppercase;color:var(--dimmer)}
+.n{font-variant-numeric:tabular-nums;font-weight:200;letter-spacing:-.045em}
+b{font-weight:600}
+a{color:var(--bone);text-underline-offset:3px}
+
+header{border-bottom:1px solid var(--rule)}
+header .in{display:flex;justify-content:space-between;gap:20px;flex-wrap:wrap;padding:22px 40px}
+
+.say{padding:clamp(70px,12vh,132px) 0 0}
+h1{font-weight:200;font-size:clamp(28px,4.6vw,54px);line-height:1.14;letter-spacing:-.035em;max-width:22ch}
+h1 em{font-style:normal;color:var(--dim)}
+.say p{margin-top:26px;max-width:56ch;color:var(--dim);font-size:18px}
+
+.g{padding:clamp(58px,9vh,100px) 0 0}
+.g > .lab{display:block;margin-bottom:20px}
+.cap{display:flex;justify-content:space-between;gap:18px;flex-wrap:wrap;margin-top:15px;
+  font-size:10px;font-weight:600;letter-spacing:.16em;text-transform:uppercase;color:var(--dimmer)}
+.cap .mid{color:var(--dim);font-weight:400;letter-spacing:.1em}
+
+/* the strip — one mark is one agent that asked */
+.axis{display:flex;align-items:flex-end;gap:2px;height:164px;overflow:hidden}
+.t{flex:1 1 0;min-width:0;background:var(--slate);height:22%}
+.t.f{background:var(--bone);height:100%}
+.t.ice{background:var(--ice)}
+.baseline{height:1px;background:var(--rule)}
+#read{margin-top:15px;font-size:15.5px;color:var(--dim);min-height:1.7em}
+#read b{color:var(--bone);font-weight:600}
+
+/* twin combs — two readings of one book, at one scale */
+.twin{display:grid;grid-template-columns:minmax(0,230px) minmax(0,1fr);gap:18px;align-items:center;margin-bottom:14px}
+.comb{display:flex;align-items:flex-end;gap:2px;height:46px;overflow:hidden}
+.comb i{flex:1 1 0;min-width:0;background:var(--bone);height:100%;display:block}
+.comb.built i{background:var(--slate-lit)}
+.comb.none{color:var(--dimmer);font-size:10px;letter-spacing:.2em;text-transform:uppercase;align-items:center}
+
+.rows{margin-top:8px}
+.row{border-top:1px solid var(--rule);padding:22px 0;display:grid;grid-template-columns:minmax(0,1fr) minmax(0,300px);gap:26px}
+.row h2{font-weight:400;font-size:19px;letter-spacing:-.02em;margin-bottom:6px}
+.row .sub{color:var(--dim);font-size:14px}
+.row .who{color:var(--dimmer);font-size:13px;margin-top:4px}
+.row .fig{font-weight:200;font-size:30px;letter-spacing:-.045em;font-variant-numeric:tabular-nums;line-height:1}
+.row .marks{display:flex;flex-wrap:wrap;gap:2px;margin-top:8px;max-width:100%}
+.row .m{width:5px;height:16px;background:var(--bone);display:block}
+.row.built .m{background:var(--slate-lit)}
+.row.oor .m{background:var(--ice)}
+
+.tail{border-top:1px solid var(--rule);padding-top:20px;color:var(--dim);max-width:58ch}
+.q{margin:22px 0}
+.q .sql{font-family:"IBM Plex Mono",monospace;font-weight:450;font-size:12.5px;color:var(--dim);display:block;margin:6px 0;overflow-wrap:anywhere}
+.q table{border-collapse:collapse;margin-top:6px}
+.q td,.q th{padding:1px 26px 1px 0;font-size:14px;text-align:left;font-weight:400}
+.q th{color:var(--dimmer);font-size:10px;letter-spacing:.2em;text-transform:uppercase}
+.limits{border-top:1px solid var(--rule);margin-top:70px;padding-top:22px;color:var(--dim);font-size:15px;max-width:64ch}
+.gone{border:1px solid var(--rule);padding:52px 40px;margin-top:30px;color:var(--dim)}
+@media(max-width:860px){.in{padding:0 24px}.row{grid-template-columns:1fr}.twin{grid-template-columns:1fr;gap:6px}}
+
+.hist{margin-top:12px}
+.hist div{font-size:12px;color:var(--dimmer);margin-bottom:2px}
+.hist .t{display:inline-block;min-width:74px}
+.hist .e{display:inline-block;min-width:118px;color:var(--dim)}
 </style>
 </head>
 <body>
-<div class="wrap">
-  <h1>Nullspace</h1>
-  <p class="lede">
-    A catalog entry for data that does not exist yet. Agents search DataHub, miss,
-    and the miss becomes the record. One mark is one agent that asked.
-  </p>
-  <p class="label"><a href="/order-book">the order book →</a></p>
+<header><div class="in">
+  <span class="lab">Nullspace</span>
+  <span class="lab" id="stamp">datahub · reading live</span>
+</div></header>
 
-  <div class="ledger" id="ledger"></div>
-  <div id="rows"></div>
+<div class="in">
+  <section class="say">
+    <h1 id="hero">A catalog entry for data <em>that does not exist yet.</em></h1>
+    <p id="lede">Agents search DataHub, miss, and the miss becomes the record. One mark is one agent that asked.</p>
+    <p class="lab" style="margin-top:20px"><a href="/order-book">the order book →</a></p>
+  </section>
+
+  <section class="g">
+    <span class="lab">Every want in the catalog</span>
+    <div class="axis" id="axis"></div>
+    <div class="baseline"></div>
+    <div class="cap"><span id="capL">WANT 001</span><span class="mid">TALL = NOT BUILT YET</span><span id="capR">—</span></div>
+    <div id="read"></div>
+  </section>
+
+  <section class="g">
+    <span class="lab">What the catalog is holding</span>
+    <div class="rows" id="rows"></div>
+  </section>
+
   <div class="limits" id="limits"></div>
 </div>
 
 <script>
 function esc(s){return String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
-function clock(ms){ return ms ? new Date(ms).toTimeString().slice(0,8) : '--:--:--'; }
-// One mark is one agent. Never rounded — the DOM is assertable against the
-// printed figure beside it.
-function marks(n, miss){ return Array.from({length:n},()=>`<i class="m${miss?' miss':''}"></i>`).join(''); }
+function clock(ms){return ms?new Date(ms).toTimeString().slice(0,8):'--:--:--';}
+function marks(n){return Array.from({length:n},()=>'<i class="m"></i>').join('');}
 
-// The history is a receipt, so it reads as English rather than as a JSON blob
+// The history is a receipt. It reads as English rather than as a JSON blob
 // pasted into a page.
 function detail(e){
-  const raw = e.detail; if(!raw) return '';
+  const raw=e.detail; if(!raw) return '';
   if(!String(raw).trim().startsWith('{')) return raw;
-  let d; try { d = JSON.parse(raw); } catch { return raw; }
-  if(e.event === 'sql_validated')
-    return `${d.status} against ${d.source_relation} — ${(d.returned_columns||[]).length} columns, ${d.sample_row_count} rows sampled`;
-  if(e.event === 'solidify')
-    return `${(d.fields||[]).length} fields, ${(d.upstreams||[]).length} upstream, schema from the requesters' own queries`;
-  if(e.event === 'pr_merged') return `merged — ${d.url||''}`;
+  let d; try{ d=JSON.parse(raw);}catch{return raw;}
+  if(e.event==='sql_validated') return `${d.status} against ${d.source_relation} — ${(d.returned_columns||[]).length} columns, ${d.sample_row_count} rows sampled`;
+  if(e.event==='solidify') return `${(d.fields||[]).length} fields, ${(d.upstreams||[]).length} upstream, schema from the requesters' own queries`;
+  if(e.event==='pr_merged') return `merged — ${d.url||''}`;
   return Object.entries(d).map(([k,v])=>`${k}=${Array.isArray(v)?v.length:v}`).join(' ');
 }
 
 function row(g){
-  const solid = g.state === 'solid';
-  const fields = (g.schema_fields||[]).map(f => typeof f === 'string' ? f : f.name).filter(Boolean);
-  return `<div class="row" data-want="${esc(g.want)}">
+  const solid=g.state==='solid';
+  const fields=(g.schema_fields||[]).map(f=>typeof f==='string'?f:f.name).filter(Boolean);
+  return `<div class="row${solid?' built':''}" data-want="${esc(g.want)}">
     <div>
       <h2>${esc(g.want)}</h2>
-      <div class="label">${esc(g.state)}</div>
-      <p class="urn">${esc(g.urn)}</p>
-      <div class="facts">
-        ${(g.requesters||[]).length ? `<div><span class="k">asked by</span>${g.requesters.map(esc).join(', ')}</div>` : ''}
-        ${solid && fields.length ? `<div><span class="k">schema</span>${fields.map(esc).join(', ')}</div>` : ''}
-        ${solid && g.schema_source ? `<div><span class="k">derived by</span>${esc(g.schema_source)}</div>` : ''}
-        ${solid && (g.upstream_urns||[]).length ? `<div><span class="k">upstream</span>${esc(g.upstream_urns[0])}</div>` : ''}
-        ${g.pr_url && /^https?:/.test(g.pr_url)
-          ? `<div><span class="k">pull request</span><a href="${esc(g.pr_url)}" target="_blank" rel="noreferrer">${esc(g.pr_url)}</a></div>` : ''}
-      </div>
-      <div class="history">${(g.resolution||[]).slice(-7).map(e =>
+      <div class="sub">${esc(g.state)}${solid&&fields.length?' · '+fields.map(esc).join(', '):''}${
+        solid?` · ${(g.upstream_urns||[]).length} upstream`:''}</div>
+      <div class="who">${(g.requesters||[]).slice(0,4).map(esc).join(', ')}${(g.requesters||[]).length>4?` and ${g.requesters.length-4} more`:''}</div>
+      ${g.pr_url&&/^https?:/.test(g.pr_url)?`<div class="who"><a href="${esc(g.pr_url)}" target="_blank" rel="noreferrer">the pull request</a></div>`:''}
+      <div class="hist">${(g.resolution||[]).slice(-6).map(e=>
         `<div><span class="t">${clock(e.at_ms)}</span><span class="e">${esc(e.event)}</span>${esc(detail(e))}</div>`).join('')}</div>
     </div>
-    <div>
-      <div class="count">${g.demand}</div>
-      <div class="marks">${marks(g.demand, !solid)}</div>
-      <div class="meta">${solid ? 'now it exists' : 'agents asked'}</div>
-    </div>
+    <div><div class="fig n">${g.demand}</div><div class="marks">${marks(g.demand)}</div>
+      <div class="sub" style="margin-top:6px">${solid?'now it exists':'agents asked'}</div></div>
   </div>`;
 }
 
 async function refresh(){
-  let d; try { d = await (await fetch('/api/board')).json(); } catch(e){ return; }
-
-  if (d.catalog && d.catalog !== 'live') {
-    document.getElementById('ledger').innerHTML = '';
-    document.getElementById('rows').innerHTML =
-      `<div class="gone"><h2>The catalog is gone, so this is gone.</h2>
-       <p>${esc(d.reason||'')}</p><p class="meta">${esc(d.source||'')} — ${esc(d.detail||'')}</p></div>`;
+  let d; try{ d=await (await fetch('/api/board')).json(); }catch(e){ return; }
+  if(d.catalog && d.catalog!=='live'){
+    document.getElementById('stamp').textContent='datahub · not answering';
+    document.getElementById('axis').innerHTML='';
+    document.getElementById('rows').innerHTML=`<div class="gone"><h2>The catalog is gone, so this is gone.</h2><p>${esc(d.reason||'')}</p></div>`;
     return;
   }
+  const g=d.ghosts||[], c=d.counts||{};
+  const asked=g.reduce((n,x)=>n+(x.demand||0),0);
+  const voices=new Set(g.flatMap(x=>x.requesters||[])).size;
 
-  const g = d.ghosts || [], c = d.counts || {};
-  const asked = g.reduce((n,x)=>n+(x.demand||0),0);
-  const voices = new Set(g.flatMap(x=>x.requesters||[])).size;
+  document.getElementById('axis').innerHTML=g.map(x=>
+    `<i class="t${x.state==='solid'?'':' f'}" title="${esc(x.want)} — ${x.demand} agents"></i>`).join('');
+  document.getElementById('capR').textContent=String(g.length);
+  document.getElementById('read').innerHTML=
+    `One mark is one want. <b>${c.solid||0}</b> exist. <b>${c.ghost||0}</b> do not, and <b>${asked}</b> requests from <b>${voices}</b> agents are behind them.`;
+  document.getElementById('hero').innerHTML=
+    `<b>${c.ghost||0}</b> things agents wanted <em>that do not exist.</em>`;
 
-  document.getElementById('ledger').innerHTML = `
-    <div><span class="n">${c.ghost||0}</span><span class="label">asked for, not built</span></div>
-    <div><span class="n">${c.claimed||0}</span><span class="label">being built</span></div>
-    <div><span class="n">${c.solid||0}</span><span class="label">made real</span></div>
-    <div><span class="n">${asked}</span><span class="label">requests from ${voices} agents</span></div>`;
-
-  const shown = g.slice(0, 12);
-  document.getElementById('rows').innerHTML = shown.length
-    ? shown.map(row).join('') + (g.length > shown.length
-        ? `<div class="waiting">and ${g.length - shown.length} more in the catalog — the order book ranks them.</div>` : '')
-    : `<div class="waiting">No agent has missed yet. The board fills when one does.</div>`;
+  const shown=g.slice(0,10);
+  document.getElementById('rows').innerHTML=shown.map(row).join('')+
+    (g.length>shown.length?`<div class="tail">and ${g.length-shown.length} more in the catalog — the order book ranks them.</div>`:'');
 }
 
-document.getElementById('limits').innerHTML =
-  `<p class="label">What this page cannot see</p>
-   <p>Requester identities and warehouse rows are disclosed demo traffic; the misses behind
-   them are genuine. Every figure here is read back from a running DataHub — this page holds
-   no copy of its own, which is why it goes blank rather than stale when the catalog stops
-   answering.</p>`;
+document.getElementById('limits').innerHTML=
+  `<p class="lab" style="margin-bottom:10px">What this page cannot see</p>
+   <p>Requester identities and warehouse rows are disclosed demo traffic; the misses behind them
+   are genuine. Every figure is read back from a running DataHub — this page holds no copy of its
+   own, which is why it goes blank rather than stale when the catalog stops answering.</p>`;
 
-refresh(); setInterval(refresh, 2000);
+refresh(); setInterval(refresh,2000);
 </script>
 </body>
 </html>
