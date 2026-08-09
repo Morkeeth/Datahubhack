@@ -3,9 +3,9 @@
 > Every witness row names the **host** it was witnessed on and the command that
 > printed it. Night-run receipts from another host are not reused as truth here.
 
-- **Last updated:** 2026-08-09 ~19:45 UTC by Cursor Lane A
+- **Last updated:** 2026-08-09 ~20:15 UTC by Cursor Lane A
 - **Host:** `cursor`
-- **Phase:** SP 422 unblocked; walk-the-book shipped; stranger report filed (no fixes in that pass)
+- **Phase:** Lane A wrap — design comps filed; UI pick deferred (Oscar has another idea); submission audit running
 - **Worker branch:** `cursor/datahub-hack-setup-4c9d`
 
 ## This turn
@@ -29,13 +29,19 @@ Clone: `git clone` → `/tmp/nullspace-stranger` from `cursor/datahub-hack-setup
 4. **`bash scripts/serve.sh`** (no `.venv`) — works (falls back to `python3`); timeout 124 = still running.
 5. **README links** `nullspace-dbt#2`, `datahub#19022` — HTTP 200 anonymous.
 
-## Still open
+## Design (wrapped — not shipping)
+
+Comps in `docs/design/board-options-v2.html` + screenshots in `docs/design/options/`.
+Oscar has a separate design idea; **do not merge a board restyle from these comps** until that lands.
+`board.html` stays Darkroom (M1).
+
+## Still open (submission blockers)
 
 1. Oscar: App → nullspace-dbt / hosted webhook (real `https://` PR)
 2. Live watcher money shot: skip churn/NRR → claim `pipeline coverage by rep` → solid + `agents_return`
-3. Lane B: MCP local-record warning; video
-4. Product ruling: whether `install-deps` must install `dbt-postgres` + write profile before freeze
+3. Lane B: video / submission package
+4. Product ruling: `install-deps` + `dbt-postgres` + profile (stranger solid must be a real table — Lane B also touched this)
 
 ## Handback — Lane B
 
-`mcp_server.py` ~163–168 stale warning — still yours.
+Board/UI restyle ownership + video. `mcp_server.py` stale warning if still present.
