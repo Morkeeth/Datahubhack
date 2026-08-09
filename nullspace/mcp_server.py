@@ -298,7 +298,23 @@ def contract_status(want: str) -> dict[str, Any]:
 
 
 def main() -> None:
-    server.run(transport="stdio")
+    """Serve over stdio by default, or over HTTP when asked.
+
+    stdio is a pipe between two processes on one machine. It is enough to prove
+    the requesters are independent agents rather than a for-loop, and it is what
+    Claude Desktop and Cursor speak locally — but a judge cannot reach a pipe.
+    `streamable-http` is the same server on a socket, so an agent on someone
+    else's machine can miss, and their own miss becomes demand on a board they
+    are watching. That is the difference between a video of our agents and a
+    thing their agent did.
+    """
+    transport = os.getenv("NULLSPACE_MCP_TRANSPORT", "stdio")
+    if transport == "stdio":
+        server.run(transport="stdio")
+        return
+    host = os.getenv("NULLSPACE_MCP_HOST", "127.0.0.1")
+    port = int(os.getenv("NULLSPACE_MCP_PORT", "8788"))
+    server.run(transport=transport, host=host, port=port)
 
 
 if __name__ == "__main__":
