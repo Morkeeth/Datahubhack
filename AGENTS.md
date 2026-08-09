@@ -10,22 +10,22 @@ Ship **Nullspace**, demand-side metadata, for Build with DataHub (deadline Mon
 Many Cursor agents + an external Claude coordinate through the repo, not through
 chat. Before doing anything:
 
-1. **Read `docs/collab/STATE.md`** — the single source of truth for the current
+1. **Read `docs/archive/collab/STATE.md`** — the single source of truth for the current
    phase, the one open decision, and who moves next.
-2. Follow `docs/collab/PROTOCOL.md` (roles + the handoff loop).
-3. **Update `docs/collab/STATE.md` at the end of your turn**, and log any decision
-   in `docs/collab/DECISIONS.md` (append-only; never silently reopen a decided
+2. Follow `docs/archive/collab/PROTOCOL.md` (roles + the handoff loop).
+3. **Update `docs/archive/collab/STATE.md` at the end of your turn**, and log any decision
+   in `docs/archive/collab/DECISIONS.md` (append-only; never silently reopen a decided
    item — add a `SUPERSEDED` entry instead).
-4. Agent↔Claude exchanges are numbered files under `docs/collab/handoffs/` and
-   `docs/collab/rulings/`, not ad-hoc chats.
+4. Agent↔Claude exchanges are numbered files under `docs/archive/collab/handoffs/` and
+   `docs/archive/collab/rulings/`, not ad-hoc chats.
 
 ## Repo map
 
 | Path | Purpose |
 | --- | --- |
 | `nullspace/` | Shipping product: demand, builder agent, native DataHub writeback |
-| `docs/collab/STATE.md` | Current verified state |
-| `docs/collab/LANES.md` | File ownership contract |
+| `docs/archive/collab/STATE.md` | Current verified state |
+| `docs/archive/collab/LANES.md` | File ownership contract |
 | `compose.yaml` | One-command DataHub + seeded warehouse substrate |
 | `infra/warehouse/init.sql` | Real writable warehouse seed |
 | `infra/datahub/postgres.yml` | Warehouse-to-DataHub ingestion recipe |
