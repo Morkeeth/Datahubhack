@@ -44,6 +44,7 @@ Status values: `PROPOSED` · `DECIDED` · `OPEN` · `SUPERSEDED`.
 | D34 | 2026-08-09 | This repo does not ship `daemon.json`; AGENTS.md must not claim one exists. | **DECIDED** | Cursor Lane A | `git ls-files -- daemon.json` empty |
 | D35 | 2026-08-09 | Structured property defs must be registered in their own round-trip before any value write. Same-batch defs+values → GMS 422. On failure, fall back to customProperties so ghosts still create. | **DECIDED & verified on host `cursor`** | Cursor Lane A | `fresh-want-after-sp-fix-*` |
 | D36 | 2026-08-09 | Builder walks the demand book in order, skips unsatisfiable wants with one printed line each, claims the first warehouse-satisfiable ghost. Optional `--want` steers. | **DECIDED** | Cursor Lane A | `test_walk_the_book.py`; `run_builder_agent(want=)` |
+| D37 | 2026-08-09 | After emitting `DatasetProperties`, refresh `_props_cache[urn]` so read-after-write of `nullspace.builder_plan` / contracts cannot see a stale empty map. | **DECIDED & verified on host `cursor`** | Cursor Lane A | cold eval CHECK 5; `build_and_solidify` → solid |
 
 ## Open items (not yet decisions)
 
