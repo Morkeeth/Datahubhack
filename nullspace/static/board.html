@@ -1,127 +1,303 @@
 <!doctype html>
 <html lang="en">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Nullspace</title>
-  <style>
-    :root {
-      --bg: #0c0f14;
-      --ink: #e8eef7;
-      --muted: #8b97a8;
-      --ghost: #5b6cff;
-      --solid: #3ddc97;
-      --claim: #f0b429;
-      --line: #1e2633;
-    }
-    * { box-sizing: border-box; }
-    body {
-      margin: 0; min-height: 100vh;
-      font-family: "IBM Plex Sans", "Segoe UI", sans-serif;
-      background:
-        radial-gradient(1200px 600px at 10% -10%, #1a2240 0%, transparent 55%),
-        radial-gradient(900px 500px at 90% 0%, #12261f 0%, transparent 50%),
-        var(--bg);
-      color: var(--ink);
-    }
-    header {
-      padding: 2.5rem 1.5rem 1rem;
-      max-width: 960px; margin: 0 auto;
-    }
-    h1 {
-      font-family: "IBM Plex Serif", Georgia, serif;
-      font-weight: 500; font-size: clamp(2rem, 5vw, 3rem);
-      letter-spacing: -0.02em; margin: 0 0 0.4rem;
-    }
-    .sub { color: var(--muted); max-width: 40rem; line-height: 1.45; }
-    .stats {
-      display: flex; gap: 1rem; flex-wrap: wrap;
-      max-width: 960px; margin: 0 auto; padding: 0 1.5rem 1.5rem;
-    }
-    .stat {
-      border: 1px solid var(--line); border-radius: 12px;
-      padding: 0.75rem 1rem; min-width: 7rem;
-      background: rgba(255,255,255,0.02);
-    }
-    .stat b { display: block; font-size: 1.6rem; }
-    .stat span { color: var(--muted); font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.06em; }
-    main { max-width: 960px; margin: 0 auto; padding: 0 1.5rem 3rem; display: grid; gap: 1rem; }
-    .card {
-      border: 1px solid var(--line); border-radius: 16px; padding: 1.25rem 1.4rem;
-      background: rgba(12,15,20,0.7); backdrop-filter: blur(8px);
-      position: relative; overflow: hidden;
-    }
-    .card.ghost { box-shadow: inset 0 0 0 1px rgba(91,108,255,0.35); }
-    .card.ghost::before {
-      content: ""; position: absolute; inset: 0;
-      background: repeating-linear-gradient(
-        -45deg, transparent, transparent 8px, rgba(91,108,255,0.04) 8px, rgba(91,108,255,0.04) 16px
-      );
-      pointer-events: none;
-    }
-    .card.solid { box-shadow: inset 0 0 0 1px rgba(61,220,151,0.45); }
-    .card.claimed { box-shadow: inset 0 0 0 1px rgba(240,180,41,0.4); }
-    .row { display: flex; justify-content: space-between; gap: 1rem; align-items: baseline; }
-    .want { font-size: 1.25rem; font-weight: 560; }
-    .badge {
-      font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.08em;
-      padding: 0.25rem 0.55rem; border-radius: 999px; border: 1px solid;
-    }
-    .badge.ghost { color: var(--ghost); border-color: var(--ghost); }
-    .badge.solid { color: var(--solid); border-color: var(--solid); }
-    .badge.claimed { color: var(--claim); border-color: var(--claim); }
-    .meta { color: var(--muted); font-size: 0.9rem; margin-top: 0.6rem; line-height: 1.5; word-break: break-all; }
-    .demand {
-      font-variant-numeric: tabular-nums; font-size: 2rem; font-weight: 600;
-      color: var(--ghost); margin-top: 0.75rem;
-    }
-    .card.solid .demand { color: var(--solid); }
-    empty { display: block; color: var(--muted); padding: 2rem 0; }
-    a { color: #9db7ff; }
-  </style>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Nullspace — the demand board</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@300;600&display=swap" rel="stylesheet">
+<style>
+  /* ------------------------------------------------------------------
+     M1 DARKROOM — a latent image becoming a print.
+     Demand is already there and not yet visible. Solidifying is developing.
+     The dark card is the exposed negative. The flip to light is the print.
+     Spec: docs/design/design-prompt.md. Absence -> presence is a VALUE flip,
+     not a hue change, which is why solid gets no second accent colour.
+     ------------------------------------------------------------------ */
+  :root {
+    --paper:      #fafafa;  /* the light narrative */
+    --negative:   #0c0c0e;  /* the dark data window */
+    --hair:       #e4e4e7;  /* hairline on light */
+    --hair-dark:  rgba(255,255,255,0.08);
+    --muted:      #6b6560;
+    --muted-dark: #8a8580;
+    --accent:     #0891b2;  /* demand accruing — cool, still waiting */
+    --safelight:  rgba(190, 58, 44, 0.022); /* ground wash only. never a dot. */
+  }
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    margin: 0;
+    background: var(--paper);
+    background-image: linear-gradient(0deg, var(--safelight), var(--safelight));
+    color: var(--negative);
+    font-family: "IBM Plex Sans", -apple-system, Segoe UI, sans-serif;
+    font-weight: 300;
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+  }
+  .wrap { max-width: 61rem; margin: 0 auto; padding: 0 1.5rem; }
+
+  /* ---------- masthead: no buttons. this is watched, not operated. ---------- */
+  header { padding: 4.5rem 0 2rem; }
+  h1 {
+    font-size: clamp(2.4rem, 6vw, 3.5rem);
+    font-weight: 600; letter-spacing: -0.04em;
+    margin: 0 0 0.75rem;
+  }
+  .standfirst {
+    font-size: 1.0625rem; color: var(--muted);
+    max-width: 34rem; margin: 0;
+  }
+  .ledger {
+    display: flex; gap: 2.25rem; flex-wrap: wrap;
+    border-top: 1px solid var(--hair);
+    margin-top: 2.5rem; padding-top: 1.25rem;
+    font-family: "IBM Plex Mono", ui-monospace, monospace;
+    font-size: 0.8125rem; color: var(--muted);
+  }
+  .ledger b { color: var(--negative); font-weight: 500; }
+
+  /* ---------- the negative: one card per ghost ---------- */
+  main { padding: 2rem 0 1rem; display: grid; gap: 1.25rem; }
+  .plate {
+    background: var(--negative); color: var(--paper);
+    border: 1px solid var(--negative); border-radius: 8px;
+    padding: 2rem 2rem 1.5rem;
+    transition: background 320ms ease-out, color 320ms ease-out, border-color 320ms ease-out;
+  }
+  .plate .want {
+    font-size: clamp(1.5rem, 3.4vw, 1.875rem);
+    font-weight: 300; letter-spacing: -0.03em;
+    margin: 0 0 0.25rem; line-height: 1.2;
+  }
+  .plate .urn {
+    font-family: "IBM Plex Mono", ui-monospace, monospace;
+    font-size: 0.75rem; color: var(--muted-dark);
+    word-break: break-all; margin: 0 0 1.75rem;
+    transition: color 320ms ease-out;
+  }
+
+  /* the hero number. a count of independent minds — never a progress bar. */
+  .count { display: flex; align-items: baseline; gap: 1.25rem; flex-wrap: wrap; }
+  .count b {
+    font-family: "IBM Plex Mono", ui-monospace, monospace;
+    font-weight: 500; font-size: 4rem; line-height: 0.9;
+    color: var(--accent); font-variant-numeric: tabular-nums;
+  }
+  .count .label {
+    font-size: 0.6875rem; font-weight: 600;
+    text-transform: uppercase; letter-spacing: 0.11em;
+    color: var(--muted-dark);
+    transition: color 320ms ease-out;
+  }
+  .asked {
+    font-family: "IBM Plex Mono", ui-monospace, monospace;
+    font-size: 0.8125rem; margin-top: 1rem;
+    display: grid; gap: 0.2rem;
+  }
+  .asked span { display: block; }
+
+  /* ---------- the print: solid inverts. the one dramatic moment. ---------- */
+  .plate.solid {
+    background: var(--paper); color: var(--negative);
+    border-color: var(--hair);
+  }
+  .plate.solid .urn,
+  .plate.solid .count .label,
+  .plate.solid .state { color: var(--muted); }
+  .plate.solid .count b { color: var(--negative); }
+  .plate.developing .asked span { animation: rise 320ms ease-out both; }
+  .plate.developing .asked span:nth-child(2) { animation-delay: 0.06s; }
+  .plate.developing .asked span:nth-child(3) { animation-delay: 0.12s; }
+  .plate.developing .asked span:nth-child(4) { animation-delay: 0.18s; }
+  @keyframes rise { from { transform: translateY(4px); opacity: 0; } to { transform: none; opacity: 1; } }
+  @media (max-width: 560px) {
+    .history { font-size: 0.6875rem; white-space: normal; }
+    .plate { padding: 1.5rem 1.25rem 1.25rem; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .plate, .plate.developing .asked span { transition: none; animation: none; }
+  }
+
+  .state {
+    font-size: 0.6875rem; font-weight: 600;
+    text-transform: uppercase; letter-spacing: 0.11em;
+    color: var(--muted-dark); float: right;
+    transition: color 320ms ease-out;
+  }
+
+  /* ---------- what the print reveals ---------- */
+  .print {
+    border-top: 1px solid var(--hair);
+    margin-top: 1.75rem; padding-top: 1.25rem;
+    font-family: "IBM Plex Mono", ui-monospace, monospace;
+    font-size: 0.8125rem;
+    display: grid; gap: 0.55rem;
+  }
+  .print dt {
+    font-family: "IBM Plex Sans", sans-serif; font-weight: 600;
+    font-size: 0.6875rem; text-transform: uppercase; letter-spacing: 0.11em;
+    color: var(--muted);
+  }
+  .print dd { margin: 0.15rem 0 0; overflow-wrap: anywhere; }
+  .print dd.fields { word-break: keep-all; line-height: 1.9; }
+  .print em { font-style: normal; color: var(--muted); font-size: 0.75rem; }
+  .print a { color: var(--accent); text-underline-offset: 3px; }
+
+  .history {
+    white-space: pre-wrap;
+    font-family: "IBM Plex Mono", ui-monospace, monospace;
+    font-size: 0.75rem; color: var(--muted-dark);
+    margin-top: 1.25rem; display: grid; gap: 0.15rem;
+    transition: color 320ms ease-out;
+  }
+  .plate.solid .history { color: var(--muted); }
+
+  /* ---------- empty: design the waiting ---------- */
+  .waiting {
+    border: 1px dashed var(--hair); border-radius: 8px;
+    padding: 4rem 2rem; text-align: left;
+    color: var(--muted); font-size: 1.0625rem;
+  }
+  footer {
+    border-top: 1px solid var(--hair);
+    margin-top: 3rem; padding: 1.5rem 0 4rem;
+    color: var(--muted); font-size: 0.8125rem; max-width: 40rem;
+  }
+  footer code {
+    font-family: "IBM Plex Mono", ui-monospace, monospace;
+    font-size: 0.75rem;
+  }
+</style>
 </head>
 <body>
+<div class="wrap">
   <header>
     <h1>Nullspace</h1>
-    <p class="sub">Demand-side metadata — catalog entries for data that does not exist yet. Ghosts accumulate agent demand; builders turn them solid.</p>
+    <p class="standfirst">
+      A catalog entry for data that does not exist yet. Agents search DataHub,
+      miss, and the miss becomes the record. Enough agents ask and a builder
+      makes it real.
+    </p>
+    <div class="ledger" id="ledger"></div>
   </header>
-  <div class="stats" id="stats"></div>
-  <main id="list"><empty>Waiting for consumer agents…</empty></main>
-  <script>
-    async function refresh() {
-      const res = await fetch('/api/board');
-      const data = await res.json();
-      const s = data.counts || {};
-      document.getElementById('stats').innerHTML = `
-        <div class="stat"><b>${s.ghost||0}</b><span>Ghost</span></div>
-        <div class="stat"><b>${s.claimed||0}</b><span>Claimed</span></div>
-        <div class="stat"><b>${s.solid||0}</b><span>Solid</span></div>`;
-      const list = document.getElementById('list');
-      const ghosts = data.ghosts || [];
-      if (!ghosts.length) {
-        list.innerHTML = '<empty>Waiting for consumer agents…</empty>';
-        return;
-      }
-      list.innerHTML = ghosts.map(g => `
-        <article class="card ${g.state}">
-          <div class="row">
-            <div class="want">${escapeHtml(g.want)}</div>
-            <span class="badge ${g.state}">${g.state}</span>
-          </div>
-          <div class="demand">demand ${g.demand}</div>
-          <div class="meta">
-            URN <code>${escapeHtml(g.urn)}</code><br/>
-            Requesters: ${g.requesters.map(escapeHtml).join(', ') || '—'}
-            ${g.claimed_by ? `<br/>Claimed by: ${escapeHtml(g.claimed_by)}` : ''}
-            ${g.pr_url ? `<br/>PR: <a href="${escapeHtml(g.pr_url)}" target="_blank" rel="noreferrer">${escapeHtml(g.pr_url)}</a>` : ''}
-          </div>
-        </article>`).join('');
-    }
-    function escapeHtml(s) {
-      return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-    }
-    refresh();
-    setInterval(refresh, 1500);
-  </script>
+
+  <main id="plates"></main>
+
+  <footer id="footer">
+    The warehouse rows and the requester identities are disclosed demo data.
+    The demand, the schema, the lineage and the ownership are read back out of a
+    running DataHub — nothing on this page is replayed from a file.
+  </footer>
+</div>
+
+<script>
+const seen = new Map();
+
+function esc(s) {
+  return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+function stamp(ms) {
+  const d = new Date(ms);
+  return d.toTimeString().slice(0, 8);
+}
+
+// The resolution history is the receipt. It has to read as English, not as a
+// JSON blob pasted into a UI — a wall of braces reads as "we could not be
+// bothered", which is the one impression this page cannot afford.
+function detail(e) {
+  const raw = e.detail;
+  if (!raw) return '';
+  if (!raw.trim().startsWith('{')) return raw;
+  let d;
+  try { d = JSON.parse(raw); } catch { return raw; }
+  if (e.event === 'sql_validated') {
+    return `${d.status} against ${d.source_relation} — ${(d.returned_columns || []).length} columns, ${d.sample_row_count} rows sampled, ${d.explain_node}`;
+  }
+  if (e.event === 'sql_validation_failed') {
+    return `refused by the warehouse — ${d.reason || d.status || 'no reason given'}`;
+  }
+  if (e.event === 'solidify') {
+    const n = (d.fields || []).length;
+    const up = (d.upstreams || []).length;
+    return `${n} fields, ${up} upstream, schema from the requesters' own queries`;
+  }
+  return Object.entries(d).map(([k, v]) => `${k}=${Array.isArray(v) ? v.length : v}`).join(' ');
+}
+
+function plate(g) {
+  const solid = g.state === 'solid';
+  const developing = seen.has(g.urn) && seen.get(g.urn) !== 'solid' && solid;
+  const requesters = (g.requesters || []).map(r => `<span>${esc(r)}</span>`).join('');
+
+  let print = '';
+  if (solid) {
+    const fields = (g.schema_fields || []).map(f => {
+      const name = typeof f === 'string' ? f : (f.name ?? '');
+      const type = (typeof f === 'object' && f.native_type) ? ` <em>${esc(f.native_type)}</em>` : '';
+      return `${esc(name)}${type}`;
+    }).join('&nbsp;&nbsp;');
+    const up = (g.upstream_urns || []).map(u => `<dd>${esc(u)}</dd>`).join('');
+    const pr = g.pr_url
+      ? (/^https?:/.test(g.pr_url)
+          ? `<dt>Pull request</dt><dd><a href="${esc(g.pr_url)}" target="_blank" rel="noreferrer">${esc(g.pr_url)}</a></dd>`
+          : `<dt>Pull request</dt><dd>${esc(g.pr_url)} — local branch, no remote PR</dd>`)
+      : '';
+    print = `<dl class="print">
+      ${fields ? `<div><dt>Schema, from what the agents asked for</dt><dd class="fields">${fields}</dd></div>` : ''}
+      ${g.schema_source ? `<div><dt>Derived by</dt><dd>${esc(g.schema_source)}</dd></div>` : ''}
+      ${up ? `<div><dt>Upstream</dt>${up}</div>` : ''}
+      ${pr ? `<div>${pr}</div>` : ''}
+    </dl>`;
+  }
+
+  const history = (g.resolution || []).slice(-7).map(e =>
+    `<div>${stamp(e.at_ms)}  ${esc(e.event.padEnd(16))}${esc(e.agent_id || '')}  ${esc(detail(e))}</div>`
+  ).join('');
+
+  seen.set(g.urn, g.state);
+
+  return `<article class="plate ${solid ? 'solid' : ''} ${developing ? 'developing' : ''}">
+    <span class="state">${esc(g.state)}</span>
+    <h2 class="want">${esc(g.want)}</h2>
+    <p class="urn">${esc(g.urn)}</p>
+    <div class="count">
+      <b>${g.demand}</b>
+      <span class="label">agents asked${solid ? ' · now it exists' : ''}</span>
+    </div>
+    <div class="asked">${requesters}</div>
+    ${print}
+    ${history ? `<div class="history">${history}</div>` : ''}
+  </article>`;
+}
+
+async function refresh() {
+  let data;
+  try {
+    data = await (await fetch('/api/board')).json();
+  } catch (e) { return; }
+
+  const g = data.ghosts || [];
+  const c = data.counts || {};
+  const asked = g.reduce((n, x) => n + (x.demand || 0), 0);
+  const voices = new Set(g.flatMap(x => x.requesters || [])).size;
+
+  document.getElementById('ledger').innerHTML =
+    `<div><b>${c.ghost || 0}</b> asked for, not yet built</div>` +
+    `<div><b>${c.claimed || 0}</b> claimed by a builder</div>` +
+    `<div><b>${c.solid || 0}</b> made real</div>` +
+    `<div><b>${asked}</b> requests from <b>${voices}</b> agents</div>`;
+
+  const el = document.getElementById('plates');
+  el.innerHTML = g.length
+    ? g.map(plate).join('')
+    : `<div class="waiting">No agent has missed yet. The board fills when one does.</div>`;
+}
+
+refresh();
+setInterval(refresh, 1200);
+</script>
 </body>
 </html>
