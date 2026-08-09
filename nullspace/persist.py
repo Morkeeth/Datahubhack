@@ -63,8 +63,14 @@ class FileGhostStore(MemoryGhostStore):
 
     def save(self, ghost: Ghost) -> None:
         super().save(ghost)
+        self._persist()
+
+    def clear(self) -> None:
+        super().clear()
+        self._persist()
+
+    def _persist(self) -> None:
         self.path.parent.mkdir(parents=True, exist_ok=True)
-        payload = {"ghosts": [g.to_public() for g in self.list_ghosts()]}
         # to_public flattens resolution; re-dump full
         payload = {
             "ghosts": [

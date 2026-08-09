@@ -77,6 +77,7 @@ class GhostStore(Protocol):
     def get(self, want: str) -> Ghost | None: ...
     def save(self, ghost: Ghost) -> None: ...
     def list_ghosts(self) -> list[Ghost]: ...
+    def clear(self) -> None: ...
 
 
 class MemoryGhostStore:
@@ -97,6 +98,9 @@ class MemoryGhostStore:
 
     def list_ghosts(self) -> list[Ghost]:
         return list(self._by_want.values())
+
+    def clear(self) -> None:
+        self._by_want.clear()
 
 
 def _key(want: str) -> str:
@@ -283,6 +287,33 @@ class Nullspace:
             for g in self.store.list_ghosts()
             if g.state == "ghost" and g.demand >= self.demand_threshold
         ]
+
+    def reset(self) -> dict[str, Any]:
+        """Wipe local ghosts and hard-delete every nullspace platform dataset."""
+        deleted: list[str] = []
+        with self.store.transaction():
+            if self.dh is not None:
+                for urn in self.dh.list_nullspace_urns():
+                    self.dh.hard_delete_urn(urn)
+                    deleted.append(urn)
+                # Search index lags hard-delete; wait until platform search is hollow.
+                if not self.dh.wait_for_nullspace_empty(timeout_seconds=30.0):
+                    remaining = self.dh.list_nullspace_urns()
+                    raise RuntimeError(
+                        "nullspace reset refused: DataHub still returns "
+                        f"{len(remaining)} nullspace asset(s) after hard-delete: "
+                        f"{remaining[:5]}"
+                    )
+            self.store.clear()
+        return {
+            "status": "reset",
+            "deleted": deleted,
+            "deleted_count": len(deleted),
+            "store_count": len(self.store.list_ghosts()),
+            "datahub_nullspace_count": (
+                0 if self.dh is None else len(self.dh.list_nullspace_urns())
+            ),
+        }
 
     def _mirror(self, ghost: Ghost) -> dict[str, Any] | None:
         """Write to DataHub and verify by reading GMS back."""

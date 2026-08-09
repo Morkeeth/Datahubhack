@@ -44,3 +44,14 @@ def test_urn_stable_across_consumers():
     a = ghost_urn("Trial-to-Paid Conversion by Cohort")
     b = ghost_urn("trial-to-paid conversion by cohort")
     assert a == b
+
+
+def test_reset_clears_local_store():
+    store = MemoryGhostStore()
+    ns = Nullspace(store, demand_threshold=3)
+    consumer_search(ns, want="reset me", agent_id="a", dh=None)
+    assert store.list_ghosts()
+    result = ns.reset()
+    assert result["status"] == "reset"
+    assert result["store_count"] == 0
+    assert store.list_ghosts() == []

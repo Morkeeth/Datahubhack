@@ -231,10 +231,63 @@ def write_dbt_model(ghost: Ghost, repo: Path, plan: BuildPlan) -> Path:
     return out
 
 
+def _remote_with_token(remote: str, token: str | None) -> str:
+    if not token or not remote.startswith("https://"):
+        return remote
+    # Avoid embedding credentials in logs; only used for git push env.
+    rest = remote.removeprefix("https://")
+    return f"https://x-access-token:{token}@{rest}"
+
+
+def ensure_dbt_remote(repo: Path, remote: str, token: str | None) -> str:
+    """Ensure origin exists; return the URL used for `git push`."""
+    public = remote
+    push_url = _remote_with_token(remote, token)
+    existing = subprocess.run(
+        ["git", "remote", "get-url", "origin"],
+        cwd=repo,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    if existing.returncode != 0:
+        subprocess.run(
+            ["git", "remote", "add", "origin", public],
+            cwd=repo,
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+    else:
+        subprocess.run(
+            ["git", "remote", "set-url", "origin", public],
+            cwd=repo,
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+    return push_url
+
+
 def create_change_reference(repo: Path, branch: str, title: str, model_path: Path) -> str:
     """Commit explicit dbt files; return a real PR URL only when one exists."""
+    cfg = settings()
     subprocess.run(["git", "init"], cwd=repo, check=False, capture_output=True)
-    subprocess.run(["git", "checkout", "-B", branch], cwd=repo, check=True, capture_output=True)
+    subprocess.run(
+        ["git", "config", "user.email", "nullspace-builder@local"],
+        cwd=repo,
+        check=False,
+        capture_output=True,
+    )
+    subprocess.run(
+        ["git", "config", "user.name", "nullspace-builder"],
+        cwd=repo,
+        check=False,
+        capture_output=True,
+    )
+    subprocess.run(
+        ["git", "checkout", "-B", branch], cwd=repo, check=True, capture_output=True
+    )
     explicit_paths = [
         "dbt_project.yml",
         "models/sources.yml",
@@ -252,32 +305,139 @@ def create_change_reference(repo: Path, branch: str, title: str, model_path: Pat
         check=False,
         capture_output=True,
     )
-    # Prefer real GitHub PR when remote + gh exist
-    remote = subprocess.run(
-        ["git", "remote", "get-url", "origin"],
+    push_url = ensure_dbt_remote(repo, cfg.dbt_remote, cfg.dbt_token)
+    push_env = {**os.environ}
+    if cfg.dbt_token:
+        push_env["GH_TOKEN"] = cfg.dbt_token
+        push_env["GITHUB_TOKEN"] = cfg.dbt_token
+    push = subprocess.run(
+        ["git", "push", push_url, f"HEAD:refs/heads/{branch}"],
         cwd=repo,
         check=False,
         capture_output=True,
         text=True,
+        env=push_env,
     )
-    if remote.returncode == 0 and remote.stdout.strip():
-        subprocess.run(
-            ["git", "push", "-u", "origin", branch],
-            cwd=repo,
-            check=False,
-            capture_output=True,
-        )
+    if push.returncode == 0:
         pr = subprocess.run(
-            ["gh", "pr", "create", "--title", title, "--body", title],
+            [
+                "gh",
+                "pr",
+                "create",
+                "--repo",
+                "Morkeeth/nullspace-dbt",
+                "--title",
+                title,
+                "--body",
+                (
+                    "Opened by the Nullspace builder agent after warehouse SQL "
+                    "validation. Merging this PR solidifies the ghost in DataHub."
+                ),
+                "--head",
+                branch,
+            ],
             cwd=repo,
             check=False,
             capture_output=True,
             text=True,
+            env=push_env,
         )
         if pr.returncode == 0 and pr.stdout.strip():
             return pr.stdout.strip().splitlines()[-1]
     # Honest local change reference. This is not a pull request.
     return f"file://{repo.resolve()}#{branch}"
+
+
+def merge_pull_request(pr_url: str) -> dict[str, Any]:
+    """Merge an open GitHub PR. Returns gh's JSON view after merge."""
+    cfg = settings()
+    env = {**os.environ}
+    if cfg.dbt_token:
+        env["GH_TOKEN"] = cfg.dbt_token
+        env["GITHUB_TOKEN"] = cfg.dbt_token
+    merged = subprocess.run(
+        ["gh", "pr", "merge", pr_url, "--merge", "--delete-branch"],
+        check=False,
+        capture_output=True,
+        text=True,
+        env=env,
+    )
+    viewed = subprocess.run(
+        ["gh", "pr", "view", pr_url, "--json", "state,url,mergedAt,title"],
+        check=False,
+        capture_output=True,
+        text=True,
+        env=env,
+    )
+    payload: dict[str, Any]
+    try:
+        payload = json.loads(viewed.stdout or "{}")
+    except json.JSONDecodeError:
+        payload = {}
+    payload["merge_ok"] = merged.returncode == 0
+    payload["merge_stderr"] = (merged.stderr or "")[:500]
+    return payload
+
+
+def solidify_after_merge(
+    ns: Nullspace,
+    want: str,
+    *,
+    builder_id: str = "builder-1",
+    merge: bool = True,
+) -> Ghost:
+    """Observe (and optionally perform) PR merge, then solidify the claimed ghost."""
+    ghost = ns.store.get(want)
+    if ghost is None:
+        raise ValueError(f"finalize refused: no ghost exists for demand {want!r}")
+    if not ghost.pr_url or not str(ghost.pr_url).startswith("https://github.com/"):
+        raise ValueError(
+            "finalize refused: ghost has no https://github.com PR URL; "
+            "shortfall is write access to Morkeeth/nullspace-dbt (NULLSPACE_DBT_TOKEN)"
+        )
+    if merge:
+        merge_view = merge_pull_request(ghost.pr_url)
+        ns.record_resolution(
+            want,
+            agent_id=builder_id,
+            event="pr_merged" if merge_view.get("state") == "MERGED" else "pr_merge_failed",
+            detail=json.dumps(merge_view, sort_keys=True),
+        )
+        if merge_view.get("state") != "MERGED":
+            raise RuntimeError(
+                "finalize refused: PR did not reach MERGED; "
+                f"returned {merge_view!r}"
+            )
+    else:
+        env = {**os.environ}
+        cfg = settings()
+        if cfg.dbt_token:
+            env["GH_TOKEN"] = cfg.dbt_token
+        viewed = subprocess.run(
+            ["gh", "pr", "view", ghost.pr_url, "--json", "state,url,mergedAt"],
+            check=True,
+            capture_output=True,
+            text=True,
+            env=env,
+        )
+        state = json.loads(viewed.stdout).get("state")
+        if state != "MERGED":
+            raise RuntimeError(
+                f"finalize refused: PR state is {state!r}, expected MERGED"
+            )
+        ns.record_resolution(
+            want,
+            agent_id=builder_id,
+            event="pr_merged",
+            detail=viewed.stdout.strip(),
+        )
+    plan = plan_for_demand(want)
+    return ns.solidify(
+        want,
+        schema_fields=plan.fields,
+        upstream_urns=[plan.upstream_urn],
+        schema_source=plan.schema_source,
+    )
 
 
 def build_and_solidify(ns: Nullspace, want: str, *, builder_id: str = "builder-1") -> Ghost:
@@ -322,6 +482,18 @@ def build_and_solidify(ns: Nullspace, want: str, *, builder_id: str = "builder-1
     title = f"feat(nullspace): solidify {ghost.want}"
     pr_url = create_change_reference(repo, branch, title, path)
     ns.attach_pr(want, pr_url)
+    ns.record_resolution(
+        want,
+        agent_id=builder_id,
+        event="pr_opened" if pr_url.startswith("https://github.com/") else "change_reference",
+        detail=pr_url,
+    )
+    # Real GitHub PR: leave claimed so merge is the solidify trigger.
+    # Local file:// reference: solidify immediately — honest, no PR claimed.
+    if pr_url.startswith("https://github.com/"):
+        if cfg.auto_merge_pr:
+            return solidify_after_merge(ns, want, builder_id=builder_id, merge=True)
+        return ns.store.get(want) or ghost
     return ns.solidify(
         want,
         schema_fields=plan.fields,
@@ -547,8 +719,11 @@ def main() -> None:
     result = asyncio.run(run_builder_agent())
     print("RESULT:")
     print(json.dumps(result, indent=2))
-    if result.get("status") not in {"solidified", "declined"}:
-        raise SystemExit(1)
+    # claimed = real PR opened, waiting on merge → solidify
+    if result.get("status") not in {"solidified", "declined", "claimed"}:
+        # MCP tool historically stamps solidified; accept ghost.state too.
+        if result.get("state") not in {"solid", "claimed"}:
+            raise SystemExit(1)
 
 
 if __name__ == "__main__":

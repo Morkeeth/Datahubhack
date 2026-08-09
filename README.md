@@ -97,9 +97,23 @@ source URN, and DataHub's current schema, lineage, ownership, tags, and demand.
 
 ## Honest boundary
 
-`dbt_project/` has no GitHub remote. `pr_url` is therefore a `file://` local
-change reference, **not a pull request**. Nullspace does not claim a PR until an
-open GitHub PR exists.
+The builder targets the public fulfillment repo
+[`Morkeeth/nullspace-dbt`](https://github.com/Morkeeth/nullspace-dbt). When push
+credentials (`NULLSPACE_DBT_TOKEN`) can open a PR, `pr_url` is an
+`https://github.com/...` URL, the ghost stays **claimed** until that PR merges,
+and `python3 -m nullspace.cli finalize --want "..."` solidifies on merge.
+
+Without write access, `pr_url` stays a `file://` local change reference — **not
+a pull request** — and solidify still runs locally so the DataHub witness path
+works. Nullspace never claims a PR that does not exist.
+
+Reset a dirty demo graph before a stranger run:
+
+```bash
+python3 -m nullspace.cli reset
+```
+
+After reset, DataHub search for platform `nullspace` returns **0** assets.
 
 ## License
 

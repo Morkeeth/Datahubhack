@@ -4,7 +4,7 @@ import argparse
 import json
 import sys
 
-from nullspace.builder import build_and_solidify
+from nullspace.builder import build_and_solidify, solidify_after_merge
 from nullspace.client import DataHubClient
 from nullspace.config import settings
 from nullspace.ghosts import Nullspace, consumer_search
@@ -38,6 +38,27 @@ def cmd_build(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_finalize(args: argparse.Namespace) -> int:
+    ns = _ns()
+    ghost = solidify_after_merge(
+        ns,
+        args.want,
+        builder_id=args.agent,
+        merge=not args.observe_only,
+    )
+    print(json.dumps(ghost.to_public(), indent=2))
+    return 0
+
+
+def cmd_reset(_: argparse.Namespace) -> int:
+    ns = _ns()
+    result = ns.reset()
+    print(json.dumps(result, indent=2))
+    if result.get("datahub_nullspace_count", 0) != 0:
+        return 1
+    return 0
+
+
 def cmd_board_dump(_: argparse.Namespace) -> int:
     store = FileGhostStore()
     print(json.dumps([g.to_public() for g in store.list_ghosts()], indent=2))
@@ -67,6 +88,8 @@ def cmd_demo(_: argparse.Namespace) -> int:
         return 1
     ghost = build_and_solidify(ns, want)
     print(json.dumps(ghost.to_public(), indent=2))
+    if ghost.state == "claimed" and str(ghost.pr_url or "").startswith("https://"):
+        print("PR open — finalize with: python3 -m nullspace.cli finalize --want", want)
     print("\nBoard: http://localhost:8787")
     return 0
 
@@ -84,6 +107,22 @@ def main(argv: list[str] | None = None) -> None:
     b.add_argument("--want", required=True)
     b.add_argument("--agent", default="builder-1")
     b.set_defaults(func=cmd_build)
+
+    f = sub.add_parser(
+        "finalize",
+        help="merge open PR (or observe merge) and solidify the claimed ghost",
+    )
+    f.add_argument("--want", required=True)
+    f.add_argument("--agent", default="builder-1")
+    f.add_argument(
+        "--observe-only",
+        action="store_true",
+        help="do not merge; require the PR to already be MERGED",
+    )
+    f.set_defaults(func=cmd_finalize)
+
+    r = sub.add_parser("reset", help="wipe local store and hard-delete nullspace assets")
+    r.set_defaults(func=cmd_reset)
 
     d = sub.add_parser("demo", help="full ghost→solid beat")
     d.set_defaults(func=cmd_demo)

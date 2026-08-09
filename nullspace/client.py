@@ -334,6 +334,55 @@ class DataHubClient:
             return False
         return bool((r.json().get("data") or {}).get("entityExists"))
 
+    def list_nullspace_urns(self) -> list[str]:
+        """Return every dataset URN on platform nullspace currently in search."""
+        query = """
+        query {
+          search(input: {
+            type: DATASET,
+            query: "*",
+            orFilters: [{
+              and: [{ field: "platform", values: ["urn:li:dataPlatform:nullspace"] }]
+            }],
+            start: 0,
+            count: 100
+          }) {
+            searchResults { entity { urn } }
+          }
+        }
+        """
+        response = httpx.post(
+            f"{self.gms}/api/graphql",
+            headers=self._headers,
+            json={"query": query},
+            timeout=30.0,
+        )
+        response.raise_for_status()
+        results = (
+            ((response.json().get("data") or {}).get("search") or {}).get(
+                "searchResults"
+            )
+            or []
+        )
+        urns: list[str] = []
+        for result in results:
+            urn = (result.get("entity") or {}).get("urn")
+            if urn:
+                urns.append(urn)
+        return urns
+
+    def hard_delete_urn(self, urn: str) -> None:
+        """Hard-delete one entity so a reset demo starts hollow."""
+        self.graph.delete_entity(urn, hard=True)
+
+    def wait_for_nullspace_empty(self, *, timeout_seconds: float = 30.0) -> bool:
+        deadline = time.monotonic() + timeout_seconds
+        while time.monotonic() < deadline:
+            if not self.list_nullspace_urns():
+                return True
+            time.sleep(0.5)
+        return not self.list_nullspace_urns()
+
 
 def now_ms() -> int:
     return int(time.time() * 1000)

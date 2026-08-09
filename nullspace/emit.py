@@ -9,6 +9,7 @@ from typing import Any
 from datahub.metadata.schema_classes import (
     AuditStampClass,
     CorpUserInfoClass,
+    DatasetLineageTypeClass,
     DatasetPropertiesClass,
     GlobalTagsClass,
     NumberTypeClass,
@@ -24,6 +25,8 @@ from datahub.metadata.schema_classes import (
     StringTypeClass,
     TagAssociationClass,
     TagPropertiesClass,
+    UpstreamClass,
+    UpstreamLineageClass,
 )
 
 from nullspace import GHOST_TAG, PLATFORM, SOLID_TAG
@@ -155,37 +158,28 @@ def _emit_schema(dh: DataHubClient, ghost: Ghost) -> None:
 
 
 def _emit_lineage(dh: DataHubClient, ghost: Ghost) -> None:
-    # Stock DataHub v1.7.0 accepts this raw MCP shape. Deliberately omit
-    # systemMetadata: including it caused ingestProposal to return 400.
-    dh.emit_mcp(
-        {
-            "entityType": "dataset",
-            "entityUrn": ghost.urn,
-            "changeType": "UPSERT",
-            "aspectName": "upstreamLineage",
-            "aspect": {
-                "contentType": "application/json",
-                "value": json.dumps(
-                    {
-                        "upstreams": [
-                            {
-                                "dataset": urn,
-                                "type": "TRANSFORMED",
-                                "auditStamp": {
-                                    "time": now_ms(),
-                                    "actor": _ACTOR,
-                                },
-                                "properties": {
-                                    "nullspace": "dbt source read during solidify"
-                                },
-                            }
-                            for urn in ghost.upstream_urns
-                        ]
-                    }
-                ),
-            },
-        }
+    # Emit through the official SDK (same path as schema/ownership). Do not
+    # attach systemMetadata — that caused ingestProposal 400s on stock GMS.
+    lineage = UpstreamLineageClass(
+        upstreams=[
+            UpstreamClass(
+                dataset=urn,
+                type=DatasetLineageTypeClass.TRANSFORMED,
+                auditStamp=_audit(),
+            )
+            for urn in ghost.upstream_urns
+        ]
     )
+    dh.emit_aspect(ghost.urn, lineage)
+    returned = dh.graph.get_aspect(ghost.urn, UpstreamLineageClass)
+    returned_urns = {
+        upstream.dataset for upstream in (returned.upstreams if returned else [])
+    }
+    if not set(ghost.upstream_urns).issubset(returned_urns):
+        raise RuntimeError(
+            "DataHub upstreamLineage read-after-write failed: "
+            f"returned {sorted(returned_urns)}, expected {sorted(ghost.upstream_urns)}"
+        )
 
 
 def _emit_requester_ownership(dh: DataHubClient, ghost: Ghost) -> None:
