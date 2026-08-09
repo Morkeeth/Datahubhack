@@ -1,16 +1,49 @@
 # Nullspace
 
-**Demand-side metadata: a catalog entry for data that does not exist yet.**
+**A catalog is a map of what exists. Nullspace makes DataHub the first catalog
+that also maps what is missing.**
 
-Requester agents search DataHub and miss in separate contexts. Nullspace turns
-those misses into demand on one shared ghost. At the threshold, a real builder
-agent reads the board over MCP, chooses what to build, explains why, discovers a
-warehouse source through DataHub, writes executable dbt SQL from the registered
-queries, and claims the ghost. When it goes solid, DataHub shows its schema,
-upstream lineage, resolution history, and the requester agents as native Owners.
+An agent searches for a table it needs, does not find it, and fails silently in
+its own context. That miss is thrown away today — no ticket, no record, nothing.
+Nullspace keeps it: every miss materialises or increments a **ghost**, a real
+DataHub dataset URN tagged `ghost`, carrying a demand counter and edges back to
+every agent that asked. Three agents in three separate contexts discover, for the
+first time, that they wanted the same thing. At the threshold a builder agent
+claims it, writes a real dbt model, opens a real pull request — and on merge the
+ghost goes solid, with the requesters as native Owners of the table they caused
+to exist.
+
+Then the part everyone forgets: **the agents that were blocked stop being
+blocked, and nobody had to ask again.**
+
+### Point your own agent at it — no clone, no Docker
+
+```bash
+python scripts/remote_agent.py --url <the public MCP url> \
+    --want "customer health score by account" \
+    --agent your-agent-name \
+    --query "SELECT account_id, health_score FROM {}"
+```
+
+Your identity comes from the MCP `clientInfo` handshake, not a field you type, so
+the demand the board shows really is yours. `bash scripts/serve.sh --public`
+prints a live URL for any instance, including your own.
+
+### What has actually happened, with receipts
+
+| | |
+|---|---|
+| A pull request an agent wrote and opened by itself | [`nullspace-dbt#2`](https://github.com/Morkeeth/nullspace-dbt/pull/2), merged |
+| Demand-side metadata proposed upstream | [`datahub-project/datahub#19022`](https://github.com/datahub-project/datahub/pull/19022) |
+| Demand harvested with **zero adoption** | 1,205 real Postgres `relation does not exist` errors → 41 wants, ranked |
+| The three blocked queries | run, verified by executing them — `python scripts/agents_return.py --want "monthly recurring revenue by segment"` |
+
+Delete DataHub and this does not degrade, it disappears: `./scripts/without-datahub.sh`
+shows three agents failing in three silos with no namespace in which the thing
+they all want can be named.
 
 Built for [Build with DataHub: The Agent Hackathon](https://datahub.devpost.com/)
-· deadline Mon 10 Aug 2026, 5pm EDT · Apache-2.0.
+· Apache-2.0.
 
 ## One-command local substrate
 
