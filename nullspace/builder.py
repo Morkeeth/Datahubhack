@@ -976,16 +976,13 @@ def _tool_json(result: Any) -> dict[str, Any]:
         return {"status": "error", "reason": f"MCP returned non-JSON: {text[:300]}"}
 
 
-def _choose_ghost(board: dict[str, Any]) -> tuple[dict[str, Any] | None, str]:
-    threshold = int(board.get("threshold", 3))
+def _rank_open_ghosts(board: dict[str, Any]) -> list[dict[str, Any]]:
     ghosts = [
         ghost
         for ghost in board.get("ghosts", [])
         if ghost.get("state") == "ghost"
     ]
-    if not ghosts:
-        return None, "declined: the demand board has 0 open ghosts"
-    ranked = sorted(
+    return sorted(
         ghosts,
         key=lambda ghost: (
             -int(ghost.get("demand", 0)),
@@ -1000,21 +997,64 @@ def _choose_ghost(board: dict[str, Any]) -> tuple[dict[str, Any] | None, str]:
             str(ghost.get("want", "")),
         ),
     )
+
+
+def _choose_ghost(
+    board: dict[str, Any],
+    *,
+    want: str | None = None,
+) -> tuple[dict[str, Any] | None, str]:
+    """Pick highest-demand open ghost (legacy helper — walk uses `_walk_book`)."""
+    threshold = int(board.get("threshold", 3))
+    ranked = _rank_open_ghosts(board)
+    if want is not None:
+        key = want.strip().lower()
+        ranked = [g for g in ranked if str(g.get("want", "")).strip().lower() == key]
+        if not ranked:
+            return None, (
+                f"declined: want {want!r} is not an open ghost on the demand board"
+            )
+    if not ranked:
+        return None, "declined: the demand board has 0 open ghosts"
     choice = ranked[0]
     demand = int(choice.get("demand", 0))
     if demand < threshold:
         shortfall = threshold - demand
         requester_word = "requester agent" if shortfall == 1 else "requester agents"
-        decline_reason = (
+        return None, (
             f"declined: highest demand is {demand} of {threshold}; "
             f"{shortfall} more {requester_word} must ask"
         )
-        return None, decline_reason
     reason = (
         f"chose {choice['want']!r}: highest independent demand "
         f"({demand}, threshold {threshold}); oldest demand breaks ties"
     )
     return choice, reason
+
+
+def _warehouse_column_shortfall(
+    fields: list[str], dh: DataHubClient
+) -> list[str]:
+    """Fields that no single warehouse dataset covers (honest skip reason)."""
+    if not fields:
+        return []
+    if dh.find_source_covering_fields(fields) is not None:
+        return []
+    # Name every demanded field absent from the union of warehouse schemas.
+    warehouse = dh.list_warehouse_datasets() if dh.healthy() else []
+    present: set[str] = set()
+    for dataset in warehouse:
+        for field in dataset.get("fields") or []:
+            present.add(str(field.get("name") or field.get("fieldPath") or "").lower())
+    return [f for f in fields if f.lower() not in present]
+
+
+def _format_skip(want: str, demand: int, reason: str) -> str:
+    return f"skipped  {want!r:<36} demand {demand:<3} {reason}"
+
+
+def _format_claim(want: str, demand: int, reason: str) -> str:
+    return f"claiming {want!r:<36} demand {demand:<3} {reason}"
 
 
 def _write_review_receipt(
@@ -1220,8 +1260,13 @@ def review_receipt(
     }
 
 
-async def run_builder_agent() -> dict[str, Any]:
-    """Observe the board over MCP, decide, generate SQL, then invoke the build tool."""
+async def run_builder_agent(want: str | None = None) -> dict[str, Any]:
+    """Walk the demand book; claim the first want the warehouse can satisfy.
+
+    ``want=None`` (default): rank by demand, skip unsatisfiable ghosts with one
+    printed line each, claim the first buildable want.
+    ``want="…"``: steer to that ghost only (refuse if missing / below threshold).
+    """
     from mcp import ClientSession, Implementation, StdioServerParameters
     from mcp.client.stdio import stdio_client
 
@@ -1237,48 +1282,139 @@ async def run_builder_agent() -> dict[str, Any]:
     ) as session:
         await session.initialize()
         board = _tool_json(await session.call_tool("open_demand", {}))
-        choice, reason = _choose_ghost(board)
-        print(f"DECISION: {reason}")
-        if choice is None:
+        threshold = int(board.get("threshold", 3))
+        ranked = _rank_open_ghosts(board)
+        if want is not None:
+            key = want.strip().lower()
+            ranked = [
+                g for g in ranked if str(g.get("want", "")).strip().lower() == key
+            ]
+            if not ranked:
+                reason = (
+                    f"declined: want {want!r} is not an open ghost on the demand board"
+                )
+                print(f"DECISION: {reason}")
+                return {"status": "declined", "reason": reason, "board": board}
+
+        if not ranked:
+            reason = "declined: the demand board has 0 open ghosts"
+            print(f"DECISION: {reason}")
             return {"status": "declined", "reason": reason, "board": board}
 
-        want = str(choice["want"])
-        contract = _tool_json(
-            await session.call_tool("contract_status", {"want": want})
-        )
-        fields = [str(field) for field in contract.get("demanded_schema", [])]
-        queries = list(contract.get("queries") or [])
-        if not fields or not queries:
+        dh = DataHubClient()
+        choice: dict[str, Any] | None = None
+        fields: list[str] = []
+        queries: list[dict[str, Any]] = []
+        plan: BuildPlan | None = None
+        reason = ""
+        skipped: list[str] = []
+
+        for candidate in ranked:
+            cand_want = str(candidate["want"])
+            demand = int(candidate.get("demand", 0))
+            if demand < threshold:
+                line = _format_skip(
+                    cand_want,
+                    demand,
+                    f"below threshold ({demand} of {threshold})",
+                )
+                print(line)
+                skipped.append(line)
+                continue
+
+            contract = _tool_json(
+                await session.call_tool("contract_status", {"want": cand_want})
+            )
+            cand_fields = [str(f) for f in contract.get("demanded_schema", [])]
+            cand_queries = list(contract.get("queries") or [])
+            if not cand_fields or not cand_queries:
+                line = _format_skip(
+                    cand_want,
+                    demand,
+                    (
+                        f"{len(cand_queries)} registered queries and "
+                        f"{len(cand_fields)} demanded fields; need ≥1 of each"
+                    ),
+                )
+                print(line)
+                skipped.append(line)
+                if want is not None:
+                    declined = {"status": "declined", "reason": line, "skipped": skipped}
+                    declined["review_receipt"] = _write_review_receipt(
+                        want=cand_want, reason=line, plan=None, result=declined
+                    )
+                    return declined
+                continue
+
+            missing = _warehouse_column_shortfall(cand_fields, dh)
+            if missing:
+                line = _format_skip(
+                    cand_want,
+                    demand,
+                    "no warehouse column for " + ", ".join(missing),
+                )
+                print(line)
+                skipped.append(line)
+                if want is not None:
+                    declined = {"status": "declined", "reason": line, "skipped": skipped}
+                    declined["review_receipt"] = _write_review_receipt(
+                        want=cand_want, reason=line, plan=None, result=declined
+                    )
+                    return declined
+                continue
+
+            try:
+                cand_plan = compile_agent_plan(
+                    want=cand_want,
+                    requesters=list(candidate.get("requesters", [])),
+                    ghost_urn=str(candidate["urn"]),
+                    demanded_fields=cand_fields,
+                    queries=cand_queries,
+                    decision_reason=(
+                        f"walked the book; claiming {cand_want!r} at demand {demand}"
+                    ),
+                )
+            except ValueError as exc:
+                line = _format_skip(cand_want, demand, str(exc))
+                print(line)
+                skipped.append(line)
+                if want is not None:
+                    declined = {"status": "declined", "reason": line, "skipped": skipped}
+                    declined["review_receipt"] = _write_review_receipt(
+                        want=cand_want, reason=line, plan=None, result=declined
+                    )
+                    return declined
+                continue
+
+            source_bits = ", ".join(cand_plan.all_tables())
+            claim_line = _format_claim(
+                cand_want,
+                demand,
+                f"all {len(cand_fields)} fields resolve to {source_bits}",
+            )
+            print(claim_line)
+            choice = candidate
+            fields = cand_fields
+            queries = cand_queries
+            plan = cand_plan
+            reason = claim_line
+            break
+
+        if choice is None or plan is None:
             reason = (
-                f"declined: {want!r} has {len(queries)} registered queries and "
-                f"{len(fields)} demanded fields; at least 1 of each is required"
+                "declined: walked the book; no open ghost is satisfiable from "
+                "this warehouse"
             )
             print(f"DECISION: {reason}")
-            declined = {"status": "declined", "reason": reason}
-            declined["review_receipt"] = _write_review_receipt(
-                want=want, reason=reason, plan=None, result=declined
-            )
-            return declined
+            return {
+                "status": "declined",
+                "reason": reason,
+                "skipped": skipped,
+                "board": board,
+            }
 
-        try:
-            plan = compile_agent_plan(
-                want=want,
-                requesters=list(choice.get("requesters", [])),
-                ghost_urn=str(choice["urn"]),
-                demanded_fields=fields,
-                queries=queries,
-                decision_reason=reason,
-            )
-        except ValueError as exc:
-            reason = str(exc)
-            print(f"DECISION: {reason}")
-            declined = {"status": "declined", "reason": reason}
-            declined["review_receipt"] = _write_review_receipt(
-                want=want, reason=reason, plan=None, result=declined
-            )
-            return declined
-
-        save_agent_plan(want, plan, dh=DataHubClient())
+        want = str(choice["want"])
+        save_agent_plan(want, plan, dh=dh)
         print(f"GENERATION TIER: {plan.generation_tier}")
         print(f"GRAIN: {plan.grain_reason}")
         print("GENERATED SQL:")
@@ -1293,8 +1429,8 @@ async def run_builder_agent() -> dict[str, Any]:
         built["upstream_urns"] = plan.all_upstreams()
         built["generation_tier"] = plan.generation_tier
         built["grain_reason"] = plan.grain_reason
-        verified_plan = _load_agent_plan(want, dh=DataHubClient()) or plan
-        # BUG-1: never KeyError on refusal — receipt must carry the reason.
+        built["skipped"] = skipped
+        verified_plan = _load_agent_plan(want, dh=dh) or plan
         if built.get("status") in {"declined", "refused", "error"} or not built.get(
             "urn"
         ):
@@ -1330,6 +1466,11 @@ def main() -> None:
         metavar="WANT",
         help="review the builder receipt bound to this demand's ghost URN",
     )
+    parser.add_argument(
+        "--want",
+        metavar="WANT",
+        help="steer the builder to this demand (default: walk the book)",
+    )
     args = parser.parse_args()
     if args.review or args.review_want:
         print(
@@ -1339,7 +1480,7 @@ def main() -> None:
             )
         )
         return
-    result = asyncio.run(run_builder_agent())
+    result = asyncio.run(run_builder_agent(want=args.want))
     print("RESULT:")
     print(json.dumps(result, indent=2))
     # claimed = real PR opened, waiting on merge → solidify

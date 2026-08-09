@@ -3,26 +3,26 @@
 > Every witness row names the **host** it was witnessed on and the command that
 > printed it. Night-run receipts from another host are not reused as truth here.
 
-- **Last updated:** 2026-08-09 ~15:50 UTC by Cursor Lane A
+- **Last updated:** 2026-08-09 ~19:25 UTC by Cursor Lane A
 - **Host:** `cursor`
-- **Phase:** Build day — harvest throughput + dbt solidify gate
+- **Phase:** SP 422 unblocked + walk-the-book; stranger report next
 - **Worker branch:** `cursor/datahub-hack-setup-4c9d`
 
 ## This turn
 
 | Slice | Status | Witness |
 |---|---|---|
-| Batch MCP emits (ghost buffer + oneshot corpuser) | ✅ | 629 pairs in **24.43s** (was >10 min / died at 63%) |
-| Open-demand search skip after first miss | ✅ | same run |
-| Solidify requires materialised ≥1 row | ✅ | `warehouse_ctas` fallback when dbt Fusion lacks Postgres; 0-row refuses |
-| AGENTS.md daemon.json false claim | ✅ | documents empty-by-design; no repo `daemon.json` |
+| SP defs sync before values (no same-batch 422) | ✅ | wiped defs → same-batch failed; sync+fallback creates ghost |
+| customProperties fallback when defs unavailable | ✅ | want `fresh-want-after-sp-fix-*` demand=3 state=ghost |
+| CLI startup registers SP defs | ✅ | `cli._ns` |
+| Builder walks the book / `--want` steer | ✅ | unit: rank + skip/claim lines; shortfall fields |
 
-## Still open (not video)
+## Still open
 
-1. Host webhook + GitHub App write to `nullspace-dbt` (Oscar)
-2. File OSS PR (Oscar / Lane B)
-3. Lane B: MCP “recorded locally” warning; submission + video tomorrow
+1. Stranger cold-clone timing report (this turn, part 2 of final prompt)
+2. Oscar: App → nullspace-dbt / hosted webhook
+3. Lane B: MCP local-record warning; video
 
 ## Handback — Lane B
 
-`mcp_server.py` ~163–168 stale local-record warning — still yours.
+`mcp_server.py` ~163–168 stale warning — still yours.

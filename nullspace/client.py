@@ -42,6 +42,7 @@ class DataHubClient:
         self._ghost_batch_size = int(
             __import__("os").getenv("NULLSPACE_GHOST_EMIT_BATCH", "40")
         )
+        self._structured_props_ok: bool | None = None  # None=unknown, True/False cached
         import atexit
 
         atexit.register(self.flush_ghost_emits)

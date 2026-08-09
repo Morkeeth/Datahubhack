@@ -42,6 +42,8 @@ Status values: `PROPOSED` · `DECIDED` · `OPEN` · `SUPERSEDED`.
 | D32 | 2026-08-09 | Ghost MCP writes batch (`NULLSPACE_GHOST_EMIT_BATCH`, default 40) + oneshot corpuser/tag/SP defs; skip search-index wait on ghost path. Done-when: 629 harvest pairs &lt;60s. | **DECIDED & verified on host `cursor`** | Cursor Lane A | 629 pairs in 24.43s |
 | D33 | 2026-08-09 | Builder solidify refuses until the model materialises and returns ≥1 row (`dbt run`, or disclosed `warehouse_ctas` when Fusion lacks the adapter). | **DECIDED & verified on host `cursor`** | Cursor Lane A | materialise 2 rows; 0-row refuses |
 | D34 | 2026-08-09 | This repo does not ship `daemon.json`; AGENTS.md must not claim one exists. | **DECIDED** | Cursor Lane A | `git ls-files -- daemon.json` empty |
+| D35 | 2026-08-09 | Structured property defs must be registered in their own round-trip before any value write. Same-batch defs+values → GMS 422. On failure, fall back to customProperties so ghosts still create. | **DECIDED & verified on host `cursor`** | Cursor Lane A | `fresh-want-after-sp-fix-*` |
+| D36 | 2026-08-09 | Builder walks the demand book in order, skips unsatisfiable wants with one printed line each, claims the first warehouse-satisfiable ghost. Optional `--want` steers. | **DECIDED** | Cursor Lane A | `test_walk_the_book.py`; `run_builder_agent(want=)` |
 
 ## Open items (not yet decisions)
 
