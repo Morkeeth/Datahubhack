@@ -112,6 +112,25 @@ def parse(lines: Iterable[str]) -> list[Miss]:
     return found
 
 
+def dedupe(misses: list[Miss]) -> list[Miss]:
+    """Collapse a log to one entry per (want, requester).
+
+    A real log repeats: a dashboard that refreshes every ten minutes logs the
+    same miss 144 times a day. Demand is a count of *independent requesters*, so
+    replaying every repeat would neither change the number nor tell us anything
+    — it would just write the same fact to the catalog hundreds of times. We
+    keep the richest query per pair, because the widest column list is the one
+    that constrains the schema the builder has to deliver.
+    """
+    best: dict[tuple[str, str], Miss] = {}
+    for m in misses:
+        key = (m.want, m.agent_id)
+        prev = best.get(key)
+        if prev is None or len(m.sql or "") > len(prev.sql or ""):
+            best[key] = m
+    return list(best.values())
+
+
 def harvest(misses: list[Miss], *, dry_run: bool = False) -> dict:
     """Turn parsed misses into demand, through the same path an agent uses."""
     cfg = settings()
@@ -198,6 +217,11 @@ def main() -> int:
     src.add_argument("--log", help="path to a Postgres server log")
     src.add_argument("--stdin", action="store_true", help="read the log on stdin")
     p.add_argument(
+        "--all",
+        action="store_true",
+        help="record every repeat instead of one per (want, requester)",
+    )
+    p.add_argument(
         "--dry-run",
         action="store_true",
         help="parse and report, write nothing to the catalog",
@@ -206,6 +230,9 @@ def main() -> int:
 
     lines = sys.stdin if a.stdin else open(a.log, encoding="utf-8", errors="replace")
     misses = parse(lines)
+    raw_count = len(misses)
+    if not a.all:
+        misses = dedupe(misses)
     if not misses:
         # Silence is not a verdict — say what was looked for and not found.
         print(
@@ -219,7 +246,10 @@ def main() -> int:
             )
         )
         return 0
-    print(json.dumps(harvest(misses, dry_run=a.dry_run), indent=2, default=str))
+    out = harvest(misses, dry_run=a.dry_run)
+    out["log_lines_matched"] = raw_count
+    out["unique_requester_want_pairs"] = len(misses)
+    print(json.dumps(out, indent=2, default=str))
     return 0
 
 
