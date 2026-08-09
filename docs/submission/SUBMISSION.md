@@ -172,3 +172,24 @@ that produced it.
   mechanism, not our 41 wants, until they run the seeder themselves.
 - `dbt` must be installed for `solid` to mean a real table. `scripts/install-deps.sh`
   installs it; if it fails, the run says solid cannot be trusted.
+
+---
+
+## 8 · OSS — the upstream contribution
+
+The judged upstream artifact is the **RFC**, open on DataHub:
+**https://github.com/datahub-project/datahub/pull/19022** — proposing demand-side metadata
+(a first-class `demand` entity) as a concept, not just as our repo's implementation.
+
+A ready-to-apply polish kit lives at **`docs/oss/datahub-rfc-19022/`**:
+
+| File | What it is |
+|---|---|
+| `19022-demand-side-metadata.md` | Hardened RFC body — copy-runnable example, `requestId` idempotency, query redaction, an honest _Convergence_ note on the UPSERT overwrite race, and open questions for the `resolvedBy` relationship, lifecycle enforcement, requester spoofing, and URN-normalisation collisions |
+| `APPLY.md` | Oscar's ~5-minute apply runbook (rename, copy, retitle PR, commit, push) |
+| `REVIEWER-RESPONSE.md` | Comment for #19022 mapping the automated review 1–10 to FIX vs Open Question |
+| `DEVPOST-BLURB.md` | Short paste for Devpost about the upstream contribution |
+| `STRATEGY.md` | Consensus: harden the RFC tonight; defer the `NullspaceDemandSource` connector PR to later, referencing #19022 |
+
+The polish kit is **ready to apply** — it is not yet pushed to the DataHub PR (that step
+needs Oscar's token; see `APPLY.md`).
