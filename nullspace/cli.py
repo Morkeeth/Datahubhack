@@ -37,6 +37,11 @@ def _ns(*, require_catalog: bool = True, hydrate: bool = True) -> Nullspace:
                 }
             )
         )
+    if dh.healthy():
+        # Register nullspace.* structured property defs before any ghost write.
+        from nullspace.emit import ensure_structured_property_definitions
+
+        ensure_structured_property_definitions(dh)
     ns = Nullspace(
         store,
         demand_threshold=cfg.demand_threshold,

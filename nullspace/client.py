@@ -42,6 +42,7 @@ class DataHubClient:
         self._ghost_batch_size = int(
             __import__("os").getenv("NULLSPACE_GHOST_EMIT_BATCH", "40")
         )
+        self._structured_props_ok: bool | None = None  # None=unknown, True/False cached
         import atexit
 
         atexit.register(self.flush_ghost_emits)
@@ -147,6 +148,7 @@ class DataHubClient:
     ) -> None:
         """Write one native aspect through the official SDK (or queue if batching)."""
         from datahub.emitter.rest_emitter import EmitMode
+        from datahub.metadata.schema_classes import DatasetPropertiesClass
 
         mcp = MetadataChangeProposalWrapper(entityUrn=urn, aspect=aspect)
         if self._batch_depth > 0:
@@ -154,6 +156,9 @@ class DataHubClient:
             return
         mode = emit_mode if emit_mode is not None else EmitMode.SYNC_PRIMARY
         self.graph.emit(mcp, emit_mode=mode)
+        # Keep the props cache honest after DatasetProperties writes.
+        if isinstance(aspect, DatasetPropertiesClass):
+            self._props_cache[urn] = dict(aspect.customProperties or {})
 
     def emit_mcps(
         self,
@@ -163,11 +168,17 @@ class DataHubClient:
     ) -> None:
         """Batch-write native aspects — orders of magnitude faster than serial emit."""
         from datahub.emitter.rest_emitter import EmitMode
+        from datahub.metadata.schema_classes import DatasetPropertiesClass
 
         if not mcps:
             return
         mode = emit_mode if emit_mode is not None else EmitMode.ASYNC
         self.graph.emit_mcps(mcps, emit_mode=mode)
+        for mcp in mcps:
+            aspect = getattr(mcp, "aspect", None)
+            urn = getattr(mcp, "entityUrn", None)
+            if urn and isinstance(aspect, DatasetPropertiesClass):
+                self._props_cache[str(urn)] = dict(aspect.customProperties or {})
 
     def queue_aspect(self, urn: str, aspect: Any) -> None:
         """Append an MCP to the current batch (or emit immediately if not batching)."""

@@ -78,37 +78,73 @@ def _audit() -> AuditStampClass:
 
 def ensure_structured_property_definitions(
     dh: DataHubClient, *, queue: list | None = None
-) -> None:
-    """Register nullspace.* structured properties on stock GMS (idempotent)."""
+) -> bool:
+    """Register nullspace.* structured properties on stock GMS (idempotent).
+
+    Always emits definitions in their **own** round-trip before any value
+    assignment. Queuing defs with structuredProperties values in one batch
+    is rejected by GMS (422 / AspectValidationException) — that regression
+    blocked every ghost write.
+
+    Returns True when definitions are present and usable.
+    """
+    del queue  # never batch defs with value writes
+    if getattr(dh, "_structured_props_ok", None) is True:
+        return True
+    if getattr(dh, "_structured_props_ok", None) is False:
+        return False
     if dh.oneshot_done("structuredProperties:nullspace"):
-        return
+        existing = dh.graph.get_aspect(_SP_DEMAND, StructuredPropertyDefinitionClass)
+        if existing is not None and existing.qualifiedName == "nullspace.demand":
+            dh._structured_props_ok = True
+            return True
+        dh._oneshot_urns.discard("structuredProperties:nullspace")
+
     audit = _audit()
-    for urn, qname, value_type, display in _STRUCTURED_DEFS:
-        aspect = StructuredPropertyDefinitionClass(
-            qualifiedName=qname,
-            displayName=display,
-            valueType=value_type,
-            entityTypes=["urn:li:entityType:datahub.dataset"],
-            cardinality="SINGLE",
-            description=(
-                f"{display} — demand-side metadata for assets that do not "
-                "exist yet (Nullspace)"
-            ),
-            immutable=False,
-            created=audit,
-            lastModified=audit,
-        )
-        if queue is not None:
-            queue.append(MetadataChangeProposalWrapper(entityUrn=urn, aspect=aspect))
-        else:
-            dh.emit_aspect(urn, aspect)
+    try:
+        for urn, qname, value_type, display in _STRUCTURED_DEFS:
+            dh.emit_aspect(
+                urn,
+                StructuredPropertyDefinitionClass(
+                    qualifiedName=qname,
+                    displayName=display,
+                    valueType=value_type,
+                    entityTypes=["urn:li:entityType:datahub.dataset"],
+                    cardinality="SINGLE",
+                    description=(
+                        f"{display} — demand-side metadata for assets that do not "
+                        "exist yet (Nullspace)"
+                    ),
+                    immutable=False,
+                    created=audit,
+                    lastModified=audit,
+                ),
+            )
             returned = dh.graph.get_aspect(urn, StructuredPropertyDefinitionClass)
             if returned is None or returned.qualifiedName != qname:
                 raise RuntimeError(
                     "DataHub structuredProperty definition read-after-write failed: "
                     f"returned {returned!r}, expected {qname!r}"
                 )
+    except Exception as exc:  # noqa: BLE001
+        existing = dh.graph.get_aspect(_SP_DEMAND, StructuredPropertyDefinitionClass)
+        if existing is not None and existing.qualifiedName == "nullspace.demand":
+            dh.mark_oneshot("structuredProperties:nullspace")
+            dh._structured_props_ok = True
+            return True
+        import logging
+
+        logging.getLogger("nullspace.emit").warning(
+            "structuredProperty definitions unavailable (%s); "
+            "falling back to customProperties only",
+            exc,
+        )
+        dh.mark_oneshot("structuredProperties:nullspace:fallback")
+        dh._structured_props_ok = False
+        return False
     dh.mark_oneshot("structuredProperties:nullspace")
+    dh._structured_props_ok = True
+    return True
 
 
 def emit_ghost(
@@ -119,10 +155,9 @@ def emit_ghost(
 ) -> dict[str, Any]:
     """Upsert native aspects, then return DataHub's read-back witness.
 
-    Ghost (demand) writes are batched ASYNC and skip search-index wait — required
+    Ghost (demand) writes are batched and skip search-index wait — required
     for harvest-scale throughput. Solid writes stay strict (SYNC + full verify).
     """
-    from datahub.emitter.mcp import MetadataChangeProposalWrapper
     from datahub.emitter.rest_emitter import EmitMode
 
     if strict is None:
@@ -173,17 +208,8 @@ def emit_ghost(
     tag_urn = f"urn:li:tag:{tag}"
     queue: list[MetadataChangeProposalWrapper] = []
 
-    # Never queue these. A structured-property *definition* and the first ghost
-    # that *uses* it cannot travel in the same batch: GMS validates the usage
-    # against the definitions that already exist, so the whole MCP is rejected
-    # with a 422 — "no valid property assignments remain after removing values
-    # for non-existent properties" — and no ghost is created at all. Worse, the
-    # local store had already advanced, so a degraded run looked healthy while
-    # the catalog stayed empty.
-    #
-    # Definitions are cheap, idempotent and read back before use, so they go
-    # synchronously, always, ahead of everything that references them.
-    ensure_structured_property_definitions(dh, queue=None)
+    # Definitions MUST land before any structuredProperties value write.
+    sp_ready = ensure_structured_property_definitions(dh)
 
     if not dh.oneshot_done(tag_urn):
         queue.append(
@@ -204,34 +230,35 @@ def emit_ghost(
         )
     )
 
-    audit = _audit()
-    queue.append(
-        MetadataChangeProposalWrapper(
-            entityUrn=ghost.urn,
-            aspect=StructuredPropertiesClass(
-                properties=[
-                    StructuredPropertyValueAssignmentClass(
-                        propertyUrn=_SP_DEMAND,
-                        values=[float(ghost.demand)],
-                        created=audit,
-                        lastModified=audit,
-                    ),
-                    StructuredPropertyValueAssignmentClass(
-                        propertyUrn=_SP_STATE,
-                        values=[ghost.state],
-                        created=audit,
-                        lastModified=audit,
-                    ),
-                    StructuredPropertyValueAssignmentClass(
-                        propertyUrn=_SP_WANT,
-                        values=[ghost.want],
-                        created=audit,
-                        lastModified=audit,
-                    ),
-                ]
-            ),
+    if sp_ready:
+        audit = _audit()
+        queue.append(
+            MetadataChangeProposalWrapper(
+                entityUrn=ghost.urn,
+                aspect=StructuredPropertiesClass(
+                    properties=[
+                        StructuredPropertyValueAssignmentClass(
+                            propertyUrn=_SP_DEMAND,
+                            values=[float(ghost.demand)],
+                            created=audit,
+                            lastModified=audit,
+                        ),
+                        StructuredPropertyValueAssignmentClass(
+                            propertyUrn=_SP_STATE,
+                            values=[ghost.state],
+                            created=audit,
+                            lastModified=audit,
+                        ),
+                        StructuredPropertyValueAssignmentClass(
+                            propertyUrn=_SP_WANT,
+                            values=[ghost.want],
+                            created=audit,
+                            lastModified=audit,
+                        ),
+                    ]
+                ),
+            )
         )
-    )
 
     if ghost.requesters:
         _queue_requester_ownership(dh, ghost, queue, verify=strict)
@@ -484,7 +511,8 @@ def _build_demand_schema_assertion(
 
 
 def _emit_structured_lifecycle(dh: DataHubClient, ghost: Ghost) -> None:
-    ensure_structured_property_definitions(dh)
+    if not ensure_structured_property_definitions(dh):
+        return
     audit = _audit()
     dh.emit_aspect(
         ghost.urn,
