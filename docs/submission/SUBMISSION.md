@@ -13,7 +13,7 @@ the live stack and is marked with how it was checked.
 | Repo (public, Apache-2.0) | https://github.com/Morkeeth/nullspace |
 | The pull request an agent opened and merged | https://github.com/Morkeeth/nullspace-dbt/pull/5 |
 | The fulfilment repo it writes into | https://github.com/Morkeeth/nullspace-dbt |
-| Upstream contribution (RFC, open) | https://github.com/datahub-project/datahub/pull/19022 |
+| Upstream contribution (RFC, open) | https://github.com/datahub-project/datahub/pull/19022 — `docs/rfcs/active/19022-demand-side-metadata.md` |
 | Live board | printed by `bash scripts/serve.sh --public` |
 | Video | *paste after upload* |
 
@@ -28,11 +28,11 @@ infrastructure, the requesters are MCP clients, and the builder is an MCP client
 |---|---|---|
 | Real Postgres errors harvested | 2,405 log lines | `docker logs` piped to `nullspace.agents.harvest` |
 | Requester-want pairs recorded | 1,253 | harvest output, deduped to one per (want, requester) |
-| Distinct wants in the catalog | 41 | GraphQL search on platform `nullspace` |
-| Unfilled right now | 40 | `/api/order-book` |
-| Agents blocked | 1,209 | sum of demand on unfilled wants |
+| Distinct wants in the catalog | 52 | GraphQL search on platform `nullspace` |
+| Unfilled right now | 51 | `/api/order-book` |
+| Agents blocked | 1,243 | sum of demand on unfilled wants |
 | Built because demand was visible | 1 | the solid asset, read back from DataHub |
-| Queries unblocked | 3 of 3 | executed in a READ ONLY transaction |
+| Queries unblocked | 4 | executed in a READ ONLY transaction |
 | Tests | 24 passed | `pytest nullspace/tests` |
 | Time from first ask to solid | seconds, printed on the board | `nullspace.resolution` timestamps |
 
@@ -98,7 +98,7 @@ blocked, and none of them had to ask again.**
 
 Demand does not require adoption. Postgres has logged every miss for twenty years —
 `ERROR: relation "x" does not exist`, with the statement beside it. We read that log.
-2,405 real error lines from this warehouse became 1,253 attributed requests across 41
+2,405 real error lines from this warehouse became 1,253 attributed requests across 51
 tables that do not exist, ranked by how many independent agents are waiting.
 
 **Delete DataHub and this does not degrade, it disappears.** A Jira ticket cannot be an
@@ -132,7 +132,7 @@ warehouse rows are disclosed demo traffic; the misses are real.
 > of them asked again.
 >
 > No adoption needed either. Postgres has been logging `relation does not exist` for
-> twenty years. 2,405 real errors → 41 tables nobody built, ranked by how many agents
+> twenty years. 2,405 real errors → 51 tables nobody built, ranked by how many agents
 > are waiting.
 >
 > Built for the DataHub agent hackathon. Open source, and the RFC is upstream.
@@ -147,7 +147,7 @@ warehouse rows are disclosed demo traffic; the misses are real.
 > what they were trying to run. Enough demand and an agent builds it, opens a PR, and the
 > blocked queries start working.
 >
-> 2,405 real Postgres errors → 41 tables nobody built.
+> 2,405 real Postgres errors → 51 tables nobody built.
 
 ---
 
@@ -169,6 +169,6 @@ that produced it.
 - Cloudflare quick tunnels mint a **new hostname every restart**, so a live URL is only
   live while the terminal is open.
 - The harvest corpus is reproducible but **not committed**, so a stranger sees the
-  mechanism, not our 41 wants, until they run the seeder themselves.
+  mechanism, not our 51 wants, until they run the seeder themselves.
 - `dbt` must be installed for `solid` to mean a real table. `scripts/install-deps.sh`
   installs it; if it fails, the run says solid cannot be trusted.

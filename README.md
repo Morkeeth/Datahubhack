@@ -41,7 +41,7 @@ is awake, or your own after one `docker compose up`.
 |---|---|
 | A pull request an agent wrote and opened by itself | [`nullspace-dbt#5`](https://github.com/Morkeeth/nullspace-dbt/pull/5), merged |
 | Demand-side metadata proposed upstream | [`datahub-project/datahub#19022`](https://github.com/datahub-project/datahub/pull/19022) |
-| Demand harvested with **zero adoption** | 2,405 real Postgres `relation does not exist` errors → 1,253 attributed requests across 41 wants, ranked |
+| Demand harvested with **zero adoption** | 2,405 real Postgres `relation does not exist` errors → 1,253 attributed requests across 51 wants, ranked |
 | The three blocked queries | run, verified by executing them — `python -m nullspace.console unblocked "monthly recurring revenue by segment"` |
 
 Delete DataHub and this does not degrade, it disappears: `./scripts/without-datahub.sh`
