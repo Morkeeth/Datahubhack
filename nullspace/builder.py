@@ -54,6 +54,21 @@ class BuildPlan:
     source_table: str
     decision_reason: str
     validation: dict[str, Any] | None = None
+    upstream_urns: tuple[str, ...] = ()
+    source_tables: tuple[str, ...] = ()
+    generation_tier: str = "deterministic"
+    pr_body: str = ""
+    grain_reason: str = ""
+
+    def all_upstreams(self) -> list[str]:
+        if self.upstream_urns:
+            return list(self.upstream_urns)
+        return [self.upstream_urn]
+
+    def all_tables(self) -> list[str]:
+        if self.source_tables:
+            return list(self.source_tables)
+        return [self.source_table]
 
 
 def _plan_key(want: str) -> str:
@@ -82,7 +97,13 @@ def _load_agent_plan(want: str) -> BuildPlan | None:
         raw = json.loads(_PLAN_STORE.read_text(encoding="utf-8")).get(_plan_key(want))
     except (json.JSONDecodeError, OSError):
         return None
-    return BuildPlan(**raw) if raw else None
+    if not raw:
+        return None
+    if isinstance(raw.get("upstream_urns"), list):
+        raw["upstream_urns"] = tuple(raw["upstream_urns"])
+    if isinstance(raw.get("source_tables"), list):
+        raw["source_tables"] = tuple(raw["source_tables"])
+    return BuildPlan(**raw)
 
 
 def _source_parts(urn: str) -> tuple[str, str]:
@@ -108,19 +129,71 @@ def generate_model_sql(
     fields: list[dict[str, object]],
     source_table: str,
 ) -> str:
-    """Compile executable SQL from the fields in the registered requester queries."""
-    source_table = _identifier(source_table)
-    projections = ",\n".join(
-        f'    "{_identifier(str(field["name"]))}"' for field in fields
+    """Backward-compatible wrapper — prefers the grain-aware planner."""
+    from nullspace.sqlgen import build_sql_plan
+
+    demanded = [str(field["name"]) for field in fields]
+    # Minimal warehouse view when called without DataHub (unit/offline).
+    datasets = [
+        {
+            "urn": (
+                "urn:li:dataset:(urn:li:dataPlatform:postgres,"
+                f"local-warehouse.warehouse.ecommerce.{source_table},DEV)"
+            ),
+            "fields": list(fields),
+        }
+    ]
+    plan = build_sql_plan(
+        want=want,
+        requesters=requesters,
+        ghost_urn=ghost_urn,
+        demanded_fields=demanded,
+        queries=[],
+        warehouse_datasets=datasets,
+        generation_tier="deterministic",
     )
-    return (
-        f"-- Nullspace builder-agent output for demand: {want}\n"
-        f"-- Requesters: {', '.join(requesters)}\n"
-        f"-- Ghost URN: {ghost_urn}\n"
-        "-- Generated from registered query contracts and a DataHub-returned source.\n\n"
-        "select\n"
-        f"{projections}\n"
-        f"from {{{{ source('warehouse_source', '{source_table}') }}}}\n"
+    return plan.model_sql
+
+
+def compile_agent_plan(
+    *,
+    want: str,
+    requesters: list[str],
+    ghost_urn: str,
+    demanded_fields: list[str],
+    queries: list[dict[str, Any]],
+    decision_reason: str,
+) -> BuildPlan:
+    """Plan SQL with disclosed tier (API → claude CLI → deterministic)."""
+    from nullspace.sqlgen import try_llm_tiers
+
+    dh = DataHubClient()
+    warehouse = dh.list_warehouse_datasets() if dh.healthy() else []
+    sql_plan = try_llm_tiers(
+        want=want,
+        requesters=requesters,
+        ghost_urn=ghost_urn,
+        demanded_fields=demanded_fields,
+        queries=queries,
+        warehouse_datasets=warehouse,
+    )
+    primary = sql_plan.source_tables[0]
+    return BuildPlan(
+        fields=sql_plan.fields,
+        model_sql=sql_plan.model_sql,
+        upstream_urn=sql_plan.upstream_urns[0],
+        schema_source=(
+            f"builder agent ({sql_plan.generation_tier}): registered queries + "
+            "DataHub-returned warehouse schema + grain planner"
+        ),
+        source_schema=sql_plan.source_schema,
+        source_table=primary,
+        decision_reason=decision_reason,
+        upstream_urns=tuple(sql_plan.upstream_urns),
+        source_tables=tuple(sql_plan.source_tables),
+        generation_tier=sql_plan.generation_tier,
+        pr_body=sql_plan.pr_body,
+        grain_reason=sql_plan.grain_reason,
     )
 
 
@@ -131,16 +204,24 @@ def validate_model_sql(
     import psycopg
 
     schema = _identifier(plan.source_schema)
-    table = _identifier(plan.source_table)
-    relation = f'"{schema}"."{table}"'
-    macro = "{{ source('warehouse_source', '" + table + "') }}"
-    executable_sql = (rendered_sql or plan.model_sql).replace(
-        macro, relation
-    ).strip().rstrip(";")
+    executable_sql = rendered_sql or plan.model_sql
+    for table in plan.all_tables():
+        safe = _identifier(table)
+        relation = f'"{schema}"."{safe}"'
+        macro = "{{ source('warehouse_source', '" + safe + "') }}"
+        executable_sql = executable_sql.replace(macro, relation)
+    executable_sql = executable_sql.strip().rstrip(";")
     if "{{" in executable_sql or "}}" in executable_sql:
         raise ValueError(
             "build refused: generated SQL contains unresolved dbt macros; "
             "shortfall is 1 executable model"
+        )
+    # Passthrough guard: fulfilment must change grain.
+    lowered = executable_sql.lower()
+    if "group by" not in lowered and " join " not in lowered:
+        raise ValueError(
+            "build refused: SQL has neither GROUP BY nor JOIN; "
+            "shortfall is 1 grain-changing transform (passthrough is not fulfilment)"
         )
 
     with psycopg.connect(settings().warehouse_dsn) as connection:
@@ -164,10 +245,15 @@ def validate_model_sql(
     plan_root = explain[0][0]["Plan"] if explain else {}
     return {
         "status": "passed",
-        "source_relation": f"{schema}.{table}",
+        "source_relation": ", ".join(
+            f"{schema}.{_identifier(table)}" for table in plan.all_tables()
+        ),
         "returned_columns": columns,
         "sample_row_count": len(sample),
         "explain_node": plan_root.get("Node Type"),
+        "generation_tier": plan.generation_tier,
+        "grain_reason": plan.grain_reason,
+        "upstream_count": len(plan.all_upstreams()),
     }
 
 
@@ -205,13 +291,14 @@ def write_dbt_model(ghost: Ghost, repo: Path, plan: BuildPlan) -> Path:
     models = repo / "models"
     models.mkdir(parents=True, exist_ok=True)
     sources = models / "sources.yml"
+    table_lines = "".join(f"      - name: {table}\n" for table in plan.all_tables())
     sources.write_text(
         "version: 2\n"
         "sources:\n"
         "  - name: warehouse_source\n"
         f"    schema: {plan.source_schema}\n"
         "    tables:\n"
-        f"      - name: {plan.source_table}\n",
+        f"{table_lines}",
         encoding="utf-8",
     )
     out = models / f"{ghost.dataset_name}.sql"
@@ -231,53 +318,293 @@ def write_dbt_model(ghost: Ghost, repo: Path, plan: BuildPlan) -> Path:
     return out
 
 
-def create_change_reference(repo: Path, branch: str, title: str, model_path: Path) -> str:
-    """Commit explicit dbt files; return a real PR URL only when one exists."""
+def _normalize_remote(remote: str) -> str:
+    remote = remote.strip()
+    if remote.endswith(".git"):
+        remote = remote[: -len(".git")]
+    return remote
+
+
+def _gh_env(token: str | None) -> dict[str, str]:
+    env = {**os.environ}
+    if token:
+        env["GH_TOKEN"] = token
+        env["GITHUB_TOKEN"] = token
+    return env
+
+
+def _last_change_ref_error(detail: str) -> None:
+    """Persist the most recent push/PR failure for receipts and STATE."""
+    path = Path(
+        os.getenv("NULLSPACE_DBT_LAST_ERROR", "/tmp/nullspace-dbt-last-error.txt")
+    )
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(detail[:2000], encoding="utf-8")
+
+
+def create_change_reference(
+    repo: Path,
+    branch: str,
+    title: str,
+    model_path: Path,
+    *,
+    body: str | None = None,
+) -> str:
+    """Open a real PR against nullspace-dbt main; else honest file:// reference.
+
+    D9: main stays hollow (no ghost_* models). Every model arrives via PR.
+    Push uses the authenticated `gh` CLI / GH_TOKEN on this machine.
+    """
+    cfg = settings()
+    remote = _normalize_remote(cfg.dbt_remote)
+    base = cfg.dbt_pr_base or "main"
+    slug = cfg.dbt_repo_slug
+    env = _gh_env(cfg.dbt_token)
+    pr_body = body or (
+        "Opened by the Nullspace builder agent after warehouse SQL validation.\n\n"
+        "Merging this PR is the solidify trigger."
+    )
+
+    # Keep a local working copy for warehouse validation / board demos.
     subprocess.run(["git", "init"], cwd=repo, check=False, capture_output=True)
-    subprocess.run(["git", "checkout", "-B", branch], cwd=repo, check=True, capture_output=True)
+    subprocess.run(
+        ["git", "config", "user.email", "nullspace-builder@local"],
+        cwd=repo,
+        check=False,
+        capture_output=True,
+    )
+    subprocess.run(
+        ["git", "config", "user.name", "nullspace-builder"],
+        cwd=repo,
+        check=False,
+        capture_output=True,
+    )
+    subprocess.run(
+        ["git", "checkout", "-B", branch], cwd=repo, check=True, capture_output=True
+    )
     explicit_paths = [
         "dbt_project.yml",
         "models/sources.yml",
         str(model_path.relative_to(repo)),
     ]
+    # Only stage paths that exist (sources.yml may be absent on hollow main).
+    existing_paths = [p for p in explicit_paths if (repo / p).exists()]
     subprocess.run(
-        ["git", "add", "--", *explicit_paths],
+        ["git", "add", "--", *existing_paths],
         cwd=repo,
         check=True,
         capture_output=True,
     )
     subprocess.run(
-        ["git", "commit", "-m", title, "--allow-empty"],
+        ["git", "commit", "-m", title],
         cwd=repo,
         check=False,
         capture_output=True,
     )
-    # Prefer real GitHub PR when remote + gh exist
-    remote = subprocess.run(
-        ["git", "remote", "get-url", "origin"],
-        cwd=repo,
+
+    # Publish from a fresh clone of hollow main so history matches the remote.
+    work = Path(
+        os.getenv("NULLSPACE_DBT_WORKTREE", f"/tmp/nullspace-dbt-pr-{os.getpid()}")
+    )
+    if work.exists():
+        subprocess.run(["rm", "-rf", str(work)], check=False)
+    clone = subprocess.run(
+        ["gh", "repo", "clone", slug, str(work), "--", "--depth", "1", "--branch", base],
         check=False,
         capture_output=True,
         text=True,
+        env=env,
     )
-    if remote.returncode == 0 and remote.stdout.strip():
-        subprocess.run(
-            ["git", "push", "-u", "origin", branch],
-            cwd=repo,
-            check=False,
-            capture_output=True,
+    if clone.returncode != 0:
+        detail = (
+            f"clone failed for {slug}@{base}: "
+            f"{(clone.stderr or clone.stdout or '')[:500]}"
         )
-        pr = subprocess.run(
-            ["gh", "pr", "create", "--title", title, "--body", title],
-            cwd=repo,
-            check=False,
-            capture_output=True,
-            text=True,
+        _last_change_ref_error(detail)
+        return f"file://{repo.resolve()}#{branch}"
+
+    subprocess.run(
+        ["git", "checkout", "-B", branch],
+        cwd=work,
+        check=True,
+        capture_output=True,
+        env=env,
+    )
+    subprocess.run(
+        ["git", "config", "user.email", "nullspace-builder@local"],
+        cwd=work,
+        check=False,
+        capture_output=True,
+    )
+    subprocess.run(
+        ["git", "config", "user.name", "nullspace-builder"],
+        cwd=work,
+        check=False,
+        capture_output=True,
+    )
+    (work / "models").mkdir(parents=True, exist_ok=True)
+    for rel in existing_paths:
+        src = repo / rel
+        dest = work / rel
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        dest.write_bytes(src.read_bytes())
+    subprocess.run(
+        ["git", "add", "--", *existing_paths],
+        cwd=work,
+        check=True,
+        capture_output=True,
+        env=env,
+    )
+    commit = subprocess.run(
+        ["git", "commit", "-m", title],
+        cwd=work,
+        check=False,
+        capture_output=True,
+        text=True,
+        env=env,
+    )
+    if commit.returncode != 0 and "nothing to commit" in (commit.stdout + commit.stderr):
+        detail = f"commit refused: nothing to commit on {branch}"
+        _last_change_ref_error(detail)
+        return f"file://{repo.resolve()}#{branch}"
+
+    # Prefer gh-authenticated push (handoff §D9); fall back to token URL.
+    push = subprocess.run(
+        ["git", "push", "-u", "origin", f"HEAD:refs/heads/{branch}"],
+        cwd=work,
+        check=False,
+        capture_output=True,
+        text=True,
+        env=env,
+    )
+    if push.returncode != 0:
+        detail = (
+            f"git push to {slug} failed: {(push.stderr or push.stdout or '')[:700]}"
         )
-        if pr.returncode == 0 and pr.stdout.strip():
-            return pr.stdout.strip().splitlines()[-1]
+        _last_change_ref_error(detail)
+        return f"file://{repo.resolve()}#{branch}"
+
+    pr = subprocess.run(
+        [
+            "gh",
+            "pr",
+            "create",
+            "--repo",
+            slug,
+            "--base",
+            base,
+            "--head",
+            branch,
+            "--title",
+            title,
+            "--body",
+            pr_body + f"\n\nRemote: {remote} (base `{base}`).\n",
+        ],
+        cwd=work,
+        check=False,
+        capture_output=True,
+        text=True,
+        env=env,
+    )
+    if pr.returncode == 0 and pr.stdout.strip():
+        return pr.stdout.strip().splitlines()[-1]
+
+    detail = f"gh pr create failed: {(pr.stderr or pr.stdout or '')[:700]}"
+    _last_change_ref_error(detail)
     # Honest local change reference. This is not a pull request.
     return f"file://{repo.resolve()}#{branch}"
+
+
+def merge_pull_request(pr_url: str) -> dict[str, Any]:
+    """Merge an open GitHub PR. Returns gh's JSON view after merge."""
+    cfg = settings()
+    env = {**os.environ}
+    if cfg.dbt_token:
+        env["GH_TOKEN"] = cfg.dbt_token
+        env["GITHUB_TOKEN"] = cfg.dbt_token
+    merged = subprocess.run(
+        ["gh", "pr", "merge", pr_url, "--merge", "--delete-branch"],
+        check=False,
+        capture_output=True,
+        text=True,
+        env=env,
+    )
+    viewed = subprocess.run(
+        ["gh", "pr", "view", pr_url, "--json", "state,url,mergedAt,title"],
+        check=False,
+        capture_output=True,
+        text=True,
+        env=env,
+    )
+    payload: dict[str, Any]
+    try:
+        payload = json.loads(viewed.stdout or "{}")
+    except json.JSONDecodeError:
+        payload = {}
+    payload["merge_ok"] = merged.returncode == 0
+    payload["merge_stderr"] = (merged.stderr or "")[:500]
+    return payload
+
+
+def solidify_after_merge(
+    ns: Nullspace,
+    want: str,
+    *,
+    builder_id: str = "builder-1",
+    merge: bool = True,
+) -> Ghost:
+    """Observe (and optionally perform) PR merge, then solidify the claimed ghost."""
+    ghost = ns.store.get(want)
+    if ghost is None:
+        raise ValueError(f"finalize refused: no ghost exists for demand {want!r}")
+    if not ghost.pr_url or not str(ghost.pr_url).startswith("https://github.com/"):
+        raise ValueError(
+            "finalize refused: ghost has no https://github.com PR URL; "
+            "shortfall is write access to Morkeeth/nullspace-dbt (NULLSPACE_DBT_TOKEN)"
+        )
+    if merge:
+        merge_view = merge_pull_request(ghost.pr_url)
+        ns.record_resolution(
+            want,
+            agent_id=builder_id,
+            event="pr_merged" if merge_view.get("state") == "MERGED" else "pr_merge_failed",
+            detail=json.dumps(merge_view, sort_keys=True),
+        )
+        if merge_view.get("state") != "MERGED":
+            raise RuntimeError(
+                "finalize refused: PR did not reach MERGED; "
+                f"returned {merge_view!r}"
+            )
+    else:
+        env = {**os.environ}
+        cfg = settings()
+        if cfg.dbt_token:
+            env["GH_TOKEN"] = cfg.dbt_token
+        viewed = subprocess.run(
+            ["gh", "pr", "view", ghost.pr_url, "--json", "state,url,mergedAt"],
+            check=True,
+            capture_output=True,
+            text=True,
+            env=env,
+        )
+        state = json.loads(viewed.stdout).get("state")
+        if state != "MERGED":
+            raise RuntimeError(
+                f"finalize refused: PR state is {state!r}, expected MERGED"
+            )
+        ns.record_resolution(
+            want,
+            agent_id=builder_id,
+            event="pr_merged",
+            detail=viewed.stdout.strip(),
+        )
+    plan = plan_for_demand(want)
+    return ns.solidify(
+        want,
+        schema_fields=plan.fields,
+        upstream_urns=plan.all_upstreams(),
+        schema_source=plan.schema_source,
+    )
 
 
 def build_and_solidify(ns: Nullspace, want: str, *, builder_id: str = "builder-1") -> Ghost:
@@ -300,11 +627,12 @@ def build_and_solidify(ns: Nullspace, want: str, *, builder_id: str = "builder-1
         )
     except Exception as exc:
         detail = f"{type(exc).__name__}: {str(exc)[:500]}"
-        ns.record_resolution(
+        # Do not strand the ghost in `claimed` — half-up warehouse / bad SQL
+        # must leave demand open for retry (redteam WEAPON 2).
+        ns.release_claim(
             want,
-            agent_id=builder_id,
-            event="sql_validation_failed",
-            detail=detail,
+            builder_id=builder_id,
+            detail=f"sql_validation_failed: {detail}",
         )
         raise ValueError(
             "build refused: generated SQL failed warehouse validation; "
@@ -320,12 +648,38 @@ def build_and_solidify(ns: Nullspace, want: str, *, builder_id: str = "builder-1
     )
     branch = f"nullspace/{ghost.dataset_name}"
     title = f"feat(nullspace): solidify {ghost.want}"
-    pr_url = create_change_reference(repo, branch, title, path)
+    pr_url = create_change_reference(
+        repo, branch, title, path, body=plan.pr_body or None
+    )
     ns.attach_pr(want, pr_url)
+    if pr_url.startswith("https://github.com/"):
+        ns.record_resolution(
+            want,
+            agent_id=builder_id,
+            event="pr_opened",
+            detail=pr_url,
+        )
+    else:
+        err_path = Path(
+            os.getenv("NULLSPACE_DBT_LAST_ERROR", "/tmp/nullspace-dbt-last-error.txt")
+        )
+        err = err_path.read_text(encoding="utf-8") if err_path.exists() else ""
+        ns.record_resolution(
+            want,
+            agent_id=builder_id,
+            event="change_reference",
+            detail=json.dumps({"pr_url": pr_url, "push_error": err[:700]}, sort_keys=True),
+        )
+    # Real GitHub PR: leave claimed so merge is the solidify trigger.
+    # Local file:// reference: solidify immediately — honest, no PR claimed.
+    if pr_url.startswith("https://github.com/"):
+        if cfg.auto_merge_pr:
+            return solidify_after_merge(ns, want, builder_id=builder_id, merge=True)
+        return ns.store.get(want) or ghost
     return ns.solidify(
         want,
         schema_fields=plan.fields,
-        upstream_urns=[plan.upstream_urn],
+        upstream_urns=plan.all_upstreams(),
         schema_source=plan.schema_source,
     )
 
@@ -383,35 +737,51 @@ def _write_review_receipt(
     *,
     want: str,
     reason: str,
-    plan: BuildPlan,
+    plan: BuildPlan | None,
     result: dict[str, Any],
 ) -> str:
-    witness = DataHubClient().solid_witness(str(result["urn"]))
-    properties = witness.get("properties") or {}
-    receipt = {
-        "outcome": result.get("status"),
+    """Persist a review receipt. Refusals must not raise — they *are* the result."""
+    status = str(result.get("status") or "")
+    urn = result.get("urn")
+    receipt: dict[str, Any] = {
+        "outcome": status,
         "want": want,
-        "urn": result.get("urn"),
         "decision": reason,
-        "generated_sql": plan.model_sql,
-        "source_urn": plan.upstream_urn,
-        "sql_validation": plan.validation,
-        "datahub_returned": {
-            "state": properties.get("nullspace.state"),
-            "demand": properties.get("nullspace.demand"),
-            "requesters": properties.get("nullspace.requesters"),
-            "schemaMetadata": witness.get("schemaMetadata"),
-            "lineage": witness.get("lineage"),
-            "ownership": witness.get("ownership"),
-            "tags": witness.get("tags"),
-        },
+        "host": os.uname().nodename if hasattr(os, "uname") else "unknown",
+        "generation_tier": getattr(plan, "generation_tier", None),
+        "grain_reason": getattr(plan, "grain_reason", None),
+        "generated_sql": getattr(plan, "model_sql", None),
         "change_reference": result.get("pr_url"),
-        "honest_boundary": (
-            "file:// is a local change reference, not a pull request"
-            if str(result.get("pr_url", "")).startswith("file://")
-            else None
-        ),
     }
+    if status in {"declined", "refused", "error"} or not urn:
+        receipt["refusal"] = result.get("reason") or reason
+        receipt["datahub_returned"] = None
+        receipt["honest_boundary"] = "refusal stated; no solid asset to witness"
+    else:
+        witness = DataHubClient().solid_witness(str(urn))
+        properties = witness.get("properties") or {}
+        receipt.update(
+            {
+                "urn": urn,
+                "source_urn": getattr(plan, "upstream_urn", None),
+                "upstream_urns": list(getattr(plan, "all_upstreams", lambda: [])()),
+                "sql_validation": getattr(plan, "validation", None),
+                "datahub_returned": {
+                    "state": properties.get("nullspace.state"),
+                    "demand": properties.get("nullspace.demand"),
+                    "requesters": properties.get("nullspace.requesters"),
+                    "schemaMetadata": witness.get("schemaMetadata"),
+                    "lineage": witness.get("lineage"),
+                    "ownership": witness.get("ownership"),
+                    "tags": witness.get("tags"),
+                },
+                "honest_boundary": (
+                    "file:// is a local change reference, not a pull request"
+                    if str(result.get("pr_url", "")).startswith("file://")
+                    else None
+                ),
+            }
+        )
     _RECEIPT_PATH.parent.mkdir(parents=True, exist_ok=True)
     temp = _RECEIPT_PATH.with_suffix(f".{os.getpid()}.tmp")
     temp.write_text(json.dumps(receipt, indent=2), encoding="utf-8")
@@ -422,6 +792,16 @@ def _write_review_receipt(
 def review_receipt(path: Path) -> dict[str, Any]:
     """Re-read DataHub and show whether the saved builder receipt still holds."""
     receipt = json.loads(path.read_text(encoding="utf-8"))
+    if not receipt.get("urn") or receipt.get("datahub_returned") is None:
+        return {
+            "receipt": str(path),
+            "want": receipt.get("want"),
+            "decision": receipt.get("decision"),
+            "refusal": receipt.get("refusal"),
+            "datahub_still_matches": False,
+            "generated_sql": receipt.get("generated_sql"),
+            "honest_boundary": receipt.get("honest_boundary"),
+        }
     returned_now = DataHubClient().solid_witness(str(receipt["urn"]))
     recorded = receipt["datahub_returned"]
     current_properties = returned_now.get("properties") or {}
@@ -438,10 +818,10 @@ def review_receipt(path: Path) -> dict[str, Any]:
         "receipt": str(path),
         "want": receipt["want"],
         "decision": receipt["decision"],
-        "sql_validation": receipt["sql_validation"],
+        "sql_validation": receipt.get("sql_validation"),
         "datahub_still_matches": current == recorded,
         "datahub_returned_now": current,
-        "generated_sql": receipt["generated_sql"],
+        "generated_sql": receipt.get("generated_sql"),
         "honest_boundary": receipt.get("honest_boundary"),
     }
 
@@ -473,59 +853,70 @@ async def run_builder_agent() -> dict[str, Any]:
             await session.call_tool("contract_status", {"want": want})
         )
         fields = [str(field) for field in contract.get("demanded_schema", [])]
-        queries = contract.get("queries", [])
+        queries = list(contract.get("queries") or [])
         if not fields or not queries:
             reason = (
                 f"declined: {want!r} has {len(queries)} registered queries and "
                 f"{len(fields)} demanded fields; at least 1 of each is required"
             )
             print(f"DECISION: {reason}")
-            return {"status": "declined", "reason": reason}
-
-        source = DataHubClient().find_source_covering_fields(fields)
-        if source is None:
-            reason = (
-                f"declined: no DataHub warehouse dataset covers all {len(fields)} "
-                f"demanded fields {fields}; shortfall cannot be satisfied"
+            declined = {"status": "declined", "reason": reason}
+            declined["review_receipt"] = _write_review_receipt(
+                want=want, reason=reason, plan=None, result=declined
             )
-            print(f"DECISION: {reason}")
-            return {"status": "declined", "reason": reason}
+            return declined
 
-        source_schema, source_table = _source_parts(str(source["urn"]))
-        model_sql = generate_model_sql(
-            want=want,
-            requesters=list(choice.get("requesters", [])),
-            ghost_urn=str(choice["urn"]),
-            fields=list(source["fields"]),
-            source_table=source_table,
-        )
-        plan = BuildPlan(
-            fields=list(source["fields"]),
-            model_sql=model_sql,
-            upstream_urn=str(source["urn"]),
-            schema_source=(
-                "builder agent: registered requester queries + "
-                "DataHub-returned warehouse schema"
-            ),
-            source_schema=source_schema,
-            source_table=source_table,
-            decision_reason=reason,
-        )
+        try:
+            plan = compile_agent_plan(
+                want=want,
+                requesters=list(choice.get("requesters", [])),
+                ghost_urn=str(choice["urn"]),
+                demanded_fields=fields,
+                queries=queries,
+                decision_reason=reason,
+            )
+        except ValueError as exc:
+            reason = str(exc)
+            print(f"DECISION: {reason}")
+            declined = {"status": "declined", "reason": reason}
+            declined["review_receipt"] = _write_review_receipt(
+                want=want, reason=reason, plan=None, result=declined
+            )
+            return declined
+
         save_agent_plan(want, plan)
+        print(f"GENERATION TIER: {plan.generation_tier}")
+        print(f"GRAIN: {plan.grain_reason}")
         print("GENERATED SQL:")
-        print(model_sql)
+        print(plan.model_sql)
 
         built = _tool_json(
             await session.call_tool("claim_and_build", {"want": want})
         )
         built["decision_reason"] = reason
-        built["generated_sql"] = model_sql
-        built["source_urn"] = source["urn"]
+        built["generated_sql"] = plan.model_sql
+        built["source_urn"] = plan.upstream_urn
+        built["upstream_urns"] = plan.all_upstreams()
+        built["generation_tier"] = plan.generation_tier
+        built["grain_reason"] = plan.grain_reason
         verified_plan = _load_agent_plan(want) or plan
-        built["sql_validation"] = verified_plan.validation
+        # BUG-1: never KeyError on refusal — receipt must carry the reason.
+        if built.get("status") in {"declined", "refused", "error"} or not built.get(
+            "urn"
+        ):
+            built.setdefault("status", "refused")
+            built.setdefault(
+                "reason",
+                built.get("reason")
+                or built.get("detail")
+                or "build refused without urn",
+            )
+            print(f"REFUSAL: {built['reason']}")
         built["review_receipt"] = _write_review_receipt(
             want=want,
-            reason=reason,
+            reason=reason if built.get("status") not in {"declined", "refused"} else str(
+                built.get("reason") or reason
+            ),
             plan=verified_plan,
             result=built,
         )
@@ -547,8 +938,11 @@ def main() -> None:
     result = asyncio.run(run_builder_agent())
     print("RESULT:")
     print(json.dumps(result, indent=2))
-    if result.get("status") not in {"solidified", "declined"}:
-        raise SystemExit(1)
+    # claimed = real PR opened, waiting on merge → solidify
+    if result.get("status") not in {"solidified", "declined", "claimed"}:
+        # MCP tool historically stamps solidified; accept ghost.state too.
+        if result.get("state") not in {"solid", "claimed"}:
+            raise SystemExit(1)
 
 
 if __name__ == "__main__":

@@ -334,6 +334,116 @@ class DataHubClient:
             return False
         return bool((r.json().get("data") or {}).get("entityExists"))
 
+    def list_nullspace_urns(self) -> list[str]:
+        """Return every dataset URN on platform nullspace currently in search."""
+        query = """
+        query {
+          search(input: {
+            type: DATASET,
+            query: "*",
+            orFilters: [{
+              and: [{ field: "platform", values: ["urn:li:dataPlatform:nullspace"] }]
+            }],
+            start: 0,
+            count: 100
+          }) {
+            searchResults { entity { urn } }
+          }
+        }
+        """
+        response = httpx.post(
+            f"{self.gms}/api/graphql",
+            headers=self._headers,
+            json={"query": query},
+            timeout=30.0,
+        )
+        response.raise_for_status()
+        results = (
+            ((response.json().get("data") or {}).get("search") or {}).get(
+                "searchResults"
+            )
+            or []
+        )
+        urns: list[str] = []
+        for result in results:
+            urn = (result.get("entity") or {}).get("urn")
+            if urn:
+                urns.append(urn)
+        return urns
+
+    def hard_delete_urn(self, urn: str) -> None:
+        """Hard-delete one nullspace dataset. Refuses any other platform."""
+        if "urn:li:dataPlatform:nullspace," not in urn:
+            raise ValueError(
+                "reset refused: refusing to delete non-nullspace URN "
+                f"{urn!r}; only urn:li:dataPlatform:nullspace datasets may be wiped"
+            )
+        self.graph.delete_entity(urn, hard=True)
+
+    def list_warehouse_datasets(self) -> list[dict[str, Any]]:
+        """Return non-nullspace datasets with schema fields for the SQL planner."""
+        query = """
+        query {
+          scrollAcrossEntities(input: {
+            types: [DATASET],
+            query: "*",
+            count: 500
+          }) {
+            searchResults {
+              entity {
+                urn
+                ... on Dataset {
+                  platform { name }
+                  schemaMetadata {
+                    fields { fieldPath nativeDataType nullable }
+                  }
+                }
+              }
+            }
+          }
+        }
+        """
+        response = httpx.post(
+            f"{self.gms}/api/graphql",
+            headers=self._headers,
+            json={"query": query},
+            timeout=30.0,
+        )
+        response.raise_for_status()
+        block = (
+            (response.json().get("data") or {}).get("scrollAcrossEntities") or {}
+        )
+        out: list[dict[str, Any]] = []
+        for result in block.get("searchResults") or []:
+            entity = result.get("entity") or {}
+            urn = entity.get("urn", "")
+            if ":nullspace," in urn:
+                continue
+            fields = (entity.get("schemaMetadata") or {}).get("fields") or []
+            out.append(
+                {
+                    "urn": urn,
+                    "platform": (entity.get("platform") or {}).get("name"),
+                    "fields": [
+                        {
+                            "name": field["fieldPath"],
+                            "native_type": field.get("nativeDataType") or "VARCHAR",
+                            "nullable": field.get("nullable", True),
+                        }
+                        for field in fields
+                    ],
+                }
+            )
+        return out
+
+    def wait_for_nullspace_empty(self, *, timeout_seconds: float = 30.0) -> bool:
+        deadline = time.monotonic() + timeout_seconds
+        while time.monotonic() < deadline:
+            if not self.list_nullspace_urns():
+                return True
+            time.sleep(0.5)
+        return not self.list_nullspace_urns()
+
 
 def now_ms() -> int:
     return int(time.time() * 1000)

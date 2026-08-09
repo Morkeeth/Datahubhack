@@ -38,3 +38,6 @@ htmlcov/
 # Misc
 tmp/
 .temp/
+
+# Local clone of the public fulfillment remote (never commit)
+/dbt_project/

@@ -15,10 +15,14 @@ Built for [Build with DataHub: The Agent Hackathon](https://datahub.devpost.com/
 ## One-command local substrate
 
 ```bash
-docker compose up
+./scripts/up.sh
 ```
 
-From a clean clone, Compose starts:
+That starts Compose (DataHub + warehouse + ingestion) **and** the Nullspace
+board on http://localhost:8787. Compose alone (`docker compose up`) brings up
+the substrate without the board.
+
+From a clean clone you get:
 
 - DataHub OSS at http://localhost:9002 (`datahub` / `datahub`) with GMS at
   http://localhost:8080
@@ -26,6 +30,7 @@ From a clean clone, Compose starts:
   (`agent` / `agent`, database `warehouse`)
 - a one-shot ingestion job that profiles the warehouse and publishes its
   `ecommerce` tables and view to DataHub
+- the Nullspace board at http://localhost:8787
 
 Wait until `metadata-ingestion` reports `Pipeline finished successfully`.
 DataHub and the warehouse remain running after that one-shot container exits.
@@ -55,15 +60,16 @@ From a clean clone:
 # Prerequisites: Docker Desktop, Docker Compose v2, Python 3.11+
 bash scripts/install-deps.sh
 ./scripts/up.sh
-NULLSPACE_STORE=/tmp/nullspace-eval-fresh.json \
+# Same NULLSPACE_STORE as up.sh/board (default /tmp/nullspace-ghosts.json)
 NULLSPACE_EVAL_WANT="fresh-nullspace-$(date +%s)" \
 python3 scripts/eval_nullspace.py --cold
 open http://localhost:8787
 ```
 
 The warehouse rows and requester-agent identities are disclosed demo data. The
-proof is not staged: the eval reads schema, lineage, ownership, demand, tags, and
-resolution history back from DataHub.
+proof is not staged: the eval reads schema, lineage, ownership, demand, and tags
+back from DataHub. Resolution history is written into dataset properties on the
+solid asset; open the dataset in DataHub to read it.
 
 ## Watch the builder decide
 
@@ -97,9 +103,37 @@ source URN, and DataHub's current schema, lineage, ownership, tags, and demand.
 
 ## Honest boundary
 
-`dbt_project/` has no GitHub remote. `pr_url` is therefore a `file://` local
-change reference, **not a pull request**. Nullspace does not claim a PR until an
-open GitHub PR exists.
+The builder targets the public fulfillment repo
+[`Morkeeth/nullspace-dbt`](https://github.com/Morkeeth/nullspace-dbt) (D9).
+`main` is hollow — no `ghost_*` models — so every model must arrive through a
+pull request the builder opens against **`main`**.
+
+When the authenticated `gh` CLI (or `NULLSPACE_DBT_TOKEN`) can push, `pr_url` is
+an `https://github.com/...` URL, the ghost stays **claimed** until that PR
+merges, and `python3 -m nullspace.cli finalize --want "..."` solidifies on
+merge. If push is unavailable, `pr_url` stays a `file://` local change
+reference — **not a pull request** — and solidify still runs locally so the
+DataHub witness path works. Nullspace never claims a PR that does not exist.
+
+Reset a dirty demo graph before a stranger run:
+
+```bash
+python3 -m nullspace.cli reset
+```
+
+After reset, DataHub search for platform `nullspace` returns **0** assets.
+
+## Subtraction proof (Law 2)
+
+With GMS unreachable, three isolated agents each refuse — there is no shared
+namespace in which their demand can be named:
+
+```bash
+./scripts/without-datahub.sh
+```
+
+Deleting DataHub does not degrade Nullspace into a local JSON loop; it deletes
+the product.
 
 ## License
 

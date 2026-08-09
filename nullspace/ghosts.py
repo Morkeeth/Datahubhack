@@ -13,6 +13,7 @@ with custom properties:
 from __future__ import annotations
 
 import json
+import re
 from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass, field
@@ -77,6 +78,7 @@ class GhostStore(Protocol):
     def get(self, want: str) -> Ghost | None: ...
     def save(self, ghost: Ghost) -> None: ...
     def list_ghosts(self) -> list[Ghost]: ...
+    def clear(self) -> None: ...
 
 
 class MemoryGhostStore:
@@ -97,6 +99,9 @@ class MemoryGhostStore:
 
     def list_ghosts(self) -> list[Ghost]:
         return list(self._by_want.values())
+
+    def clear(self) -> None:
+        self._by_want.clear()
 
 
 def _key(want: str) -> str:
@@ -170,6 +175,40 @@ class Nullspace:
             ghost.resolution.append(
                 ResolutionEvent(
                     agent_id=builder_id, at_ms=now_ms(), event="claim", detail="builder"
+                )
+            )
+            self._mirror(ghost)
+            self.store.save(ghost)
+            return ghost
+
+    def release_claim(
+        self, want: str, *, builder_id: str, detail: str = "build failed"
+    ) -> Ghost:
+        """Return a claimed ghost to open demand so a failed build can be retried."""
+        with self.store.transaction():
+            ghost = self.store.get(want)
+            if ghost is None:
+                raise ValueError(
+                    f"release_claim refused: no ghost exists for demand {want!r}"
+                )
+            if ghost.state != "claimed":
+                raise ValueError(
+                    f"release_claim refused: state is {ghost.state!r}, not 'claimed'"
+                )
+            if ghost.claimed_by and ghost.claimed_by != builder_id:
+                raise ValueError(
+                    "release_claim refused: "
+                    f"claimed by {ghost.claimed_by!r}, not {builder_id!r}"
+                )
+            ghost.state = "ghost"
+            ghost.claimed_by = None
+            ghost.pr_url = None
+            ghost.resolution.append(
+                ResolutionEvent(
+                    agent_id=builder_id,
+                    at_ms=now_ms(),
+                    event="release_claim",
+                    detail=detail,
                 )
             )
             self._mirror(ghost)
@@ -284,6 +323,33 @@ class Nullspace:
             if g.state == "ghost" and g.demand >= self.demand_threshold
         ]
 
+    def reset(self) -> dict[str, Any]:
+        """Wipe local ghosts and hard-delete every nullspace platform dataset."""
+        deleted: list[str] = []
+        with self.store.transaction():
+            if self.dh is not None:
+                for urn in self.dh.list_nullspace_urns():
+                    self.dh.hard_delete_urn(urn)
+                    deleted.append(urn)
+                # Search index lags hard-delete; wait until platform search is hollow.
+                if not self.dh.wait_for_nullspace_empty(timeout_seconds=30.0):
+                    remaining = self.dh.list_nullspace_urns()
+                    raise RuntimeError(
+                        "nullspace reset refused: DataHub still returns "
+                        f"{len(remaining)} nullspace asset(s) after hard-delete: "
+                        f"{remaining[:5]}"
+                    )
+            self.store.clear()
+        return {
+            "status": "reset",
+            "deleted": deleted,
+            "deleted_count": len(deleted),
+            "store_count": len(self.store.list_ghosts()),
+            "datahub_nullspace_count": (
+                0 if self.dh is None else len(self.dh.list_nullspace_urns())
+            ),
+        }
+
     def _mirror(self, ghost: Ghost) -> dict[str, Any] | None:
         """Write to DataHub and verify by reading GMS back."""
         if self.dh is None:
@@ -320,12 +386,31 @@ class Nullspace:
             ]
         except (TypeError, ValueError):
             resolution = []
+        schema_fields: list[dict[str, Any]] = []
+        upstream_urns: list[str] = []
+        state = props.get("nullspace.state", "ghost")
+        if state == "solid":
+            # Rehydrate native aspects so a later miss cannot mirror an empty
+            # solid and wipe schema/lineage in DataHub (LENS 1 finding).
+            witness = self.dh.solid_witness(urn)
+            schema_fields = [
+                {
+                    "name": field["fieldPath"],
+                    "native_type": field.get("nativeDataType") or "VARCHAR",
+                    "nullable": field.get("nullable", True),
+                }
+                for field in (witness.get("schemaMetadata") or {}).get("fields", [])
+            ]
+            upstream_urns = [
+                upstream["dataset"]
+                for upstream in (witness.get("lineage") or {}).get("upstreams", [])
+            ]
         return Ghost(
             want=props.get("nullspace.want", want),
             urn=urn,
             dataset_name=ghost_dataset_name(want),
             demand=int(props.get("nullspace.demand", "0")),
-            state=props.get("nullspace.state", "ghost"),
+            state=state,
             requesters=[
                 requester
                 for requester in props.get("nullspace.requesters", "").split(",")
@@ -334,8 +419,26 @@ class Nullspace:
             resolution=resolution,
             pr_url=props.get("nullspace.pr_url") or None,
             claimed_by=props.get("nullspace.claimed_by") or None,
+            schema_fields=schema_fields,
+            upstream_urns=upstream_urns,
             schema_source=props.get("nullspace.schema_source") or None,
         )
+
+
+def _want_tokens(want: str) -> list[str]:
+    return [token for token in re.split(r"[^a-z0-9]+", want.lower()) if len(token) >= 4]
+
+
+def _catalog_hit_matches_want(want: str, urn: str) -> bool:
+    """Reject fuzzy search noise: require meaningful want tokens in the URN/name."""
+    tokens = _want_tokens(want)
+    if not tokens:
+        return True
+    haystack = urn.lower()
+    # Majority of significant tokens must appear (DataHub often returns loose hits).
+    matched = sum(1 for token in tokens if token in haystack)
+    need = max(1, (len(tokens) + 1) // 2)
+    return matched >= need
 
 
 def consumer_search(
@@ -344,19 +447,57 @@ def consumer_search(
     want: str,
     agent_id: str,
     dh: DataHubClient | None = None,
+    offline: bool = False,
 ) -> dict[str, Any]:
-    """Search DataHub; on miss, create or increment demand on one ghost."""
+    """Search DataHub; on miss, create or increment demand on one ghost.
+
+    ``dh=None`` without ``offline=True`` is a refusal (Law 2): callers that
+    dropped the catalog because GMS was down must not silently ghost into a
+    private JSON file. Pass ``offline=True`` only for unit tests that exercise
+    the in-memory store without a catalog.
+    """
     hits: list[dict[str, Any]] = []
-    if dh is not None:
+    if dh is None:
+        if not offline:
+            return {
+                "status": "refused",
+                "agent_id": agent_id,
+                "want": want,
+                "reason": (
+                    "DataHub GMS unreachable; there is no shared namespace in which "
+                    "this demand can be named or seen by other agents. "
+                    "shortfall is 1 healthy catalog"
+                ),
+                "agent_urn": corpuser_urn(agent_id),
+            }
+    else:
+        if not dh.healthy():
+            return {
+                "status": "refused",
+                "agent_id": agent_id,
+                "want": want,
+                "reason": (
+                    "DataHub GMS unreachable; there is no shared namespace in which "
+                    "this demand can be named or seen by other agents. "
+                    "shortfall is 1 healthy catalog"
+                ),
+                "agent_urn": corpuser_urn(agent_id),
+            }
         hits = dh.search_datasets(want)
         real_hits = []
+        want_key = _key(want)
         for hit in hits:
             urn = hit.get("urn", "")
             if ":nullspace," not in urn:
-                real_hits.append(hit)
+                if _catalog_hit_matches_want(want, urn):
+                    real_hits.append(hit)
                 continue
+            # DataHub search is fuzzy: other solid ghosts must not satisfy a
+            # different demand phrase. Only the same want counts as found.
             props = dh.dataset_custom_properties(urn)
-            if props.get("nullspace.state") == "solid":
+            if props.get("nullspace.state") != "solid":
+                continue
+            if _key(props.get("nullspace.want", "")) == want_key:
                 real_hits.append(hit)
         hits = real_hits
     if hits:

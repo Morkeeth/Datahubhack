@@ -28,6 +28,27 @@ else
   echo "DataHub already healthy at $DATAHUB_GMS_URL"
 fi
 
+# README promises warehouse at localhost:5432 — do not declare the stack ready
+# when only GMS answers (redteam WEAPON 2: half-up warehouse).
+if ! docker compose ps --status running --services 2>/dev/null | grep -qx warehouse; then
+  echo "Warehouse not running; starting Compose services…"
+  docker compose up -d
+fi
+echo "Waiting for warehouse on localhost:5432…"
+warehouse_ok=0
+for _ in $(seq 1 60); do
+  if docker compose exec -T warehouse pg_isready -U agent -d warehouse >/dev/null 2>&1; then
+    warehouse_ok=1
+    break
+  fi
+  sleep 2
+done
+if [[ "$warehouse_ok" -ne 1 ]]; then
+  echo "REFUSED: warehouse did not become ready on localhost:5432; inspect 'docker compose ps'."
+  exit 1
+fi
+echo "Warehouse ready."
+
 ingestion_id="$(docker compose ps -aq metadata-ingestion)"
 if [[ -n "$ingestion_id" ]]; then
   echo "Waiting for disclosed warehouse metadata ingestion…"

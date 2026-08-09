@@ -27,7 +27,10 @@ class FileGhostStore(MemoryGhostStore):
         self._by_want = {}
         if not self.path.exists():
             return
-        raw = json.loads(self.path.read_text(encoding="utf-8"))
+        text = self.path.read_text(encoding="utf-8").strip()
+        if not text:
+            return
+        raw = json.loads(text)
         for item in raw.get("ghosts", []):
             g = Ghost(
                 want=item["want"],
@@ -63,8 +66,14 @@ class FileGhostStore(MemoryGhostStore):
 
     def save(self, ghost: Ghost) -> None:
         super().save(ghost)
+        self._persist()
+
+    def clear(self) -> None:
+        super().clear()
+        self._persist()
+
+    def _persist(self) -> None:
         self.path.parent.mkdir(parents=True, exist_ok=True)
-        payload = {"ghosts": [g.to_public() for g in self.list_ghosts()]}
         # to_public flattens resolution; re-dump full
         payload = {
             "ghosts": [

@@ -1,113 +1,42 @@
 # STATE — mission control (read this first)
 
-> The single source of truth for where this project is **right now**. If you only
-> open one file, open this one. Every agent updates it at the end of its turn.
+> Every witness row names the **host** it was witnessed on and the command that
+> printed it. Night-run receipts from another host are not reused as truth here.
 
-- **Last updated:** 2026-08-08 22:38 UTC by Cursor build agent (`bc-9950b172`)
-- **Phase:** **Builder decision + executable-SQL proof + replay receipt verified.**
-- **Deadline:** Mon 10 Aug 2026, 17:00 EDT / **23:00 Paris**
-- **Worker branch:** `cursor/datahub-hack-setup-4c9d` · repo `Morkeeth/nullspace`
+- **Last updated:** 2026-08-09 ~08:25 UTC by Cursor Lane A
+- **Host:** `cursor` (Cloud Agent VM)
+- **Phase:** Law 2 refuse path + redteam merge shipped. Builder grain code ready; remote PR still blocked.
+- **Deadline:** Mon 10 Aug 2026 · **Freeze 18:00 Paris**
+- **Worker branch:** `cursor/datahub-hack-setup-4c9d`
 
 ## You are here
 
-Concept decided (D8: Nullspace). The pipeline runs against a live DataHub and every
-claim below was read back from the graph, not from a log line.
+Redteam merge: `docs/collab/reviews/redteam-2026-08-09.md`.
 
-**Lane A and Lane B now meet at the real payoff.** Three MCP requester agents
-registered three different queries. Lane A took the union of their declared
-fields—not a hardcoded demo schema—wrote a dbt model over the disclosed revenue
-warehouse, and DataHub returned all four fields, one upstream, and all three
-requesters as native Owners. Every queued query flipped to `RUNS`: **3 running,
-0 blocked**.
+**3/3 kill R1 — board is file store, not GraphQL** — outranks in-flight Lane A polish.
+Lane B must ship GraphQL board. Lane A closed the MCP local-ghost hole via
+`consumer_search` (D24) without editing `mcp_server.py`.
 
-Ten simultaneous requester processes wrote through live DataHub and returned one
-ghost with `demand=10` and 10 distinct requesters. An offline 20-process stress
-also returned one ghost / demand 20. The file store now locks the entire
-read→DataHub write→atomic save transaction.
+## Lane A this turn
 
-**Still false and stated plainly:** `pr_url` is `file://`; no PR exists until D9.
-Cold isolated acceptance eval now reports **16 passed, 0 failed, 1 pending**;
-the only pending item is D9. Lane A waits for the lineage search index as well
-as the direct aspect, so the UI-facing GraphQL read is green before solidify returns.
+| Check | Status | Host | Proof |
+|---|---|---|---|
+| Law 2: GMS down → refuse, no local ghost | ✅ | `cursor` | `./scripts/without-datahub.sh` → 3× `status=refused`; `consumer_search(dh=None)` refuses unless `offline=True` |
+| MCP degrade closed at API | ✅ | `cursor` | `dh=None` → refused (MCP passes `live=None` when unhealthy) |
+| `up.sh` waits on warehouse | ✅ | `cursor` | `pg_isready` gate; stack already up → “Warehouse ready.” |
+| MRR grain + warehouse Aggregate | ✅ | `cursor` | `build_sql_plan` → `sum("mrr")…group by`; `EXPLAIN` → `HashAggregate` |
+| Push grain SQL to `nullspace-dbt` | 🔴 | `cursor` | App install total=1; 403 to `cursor[bot]`. OPEN PR #1 still pre-think SQL |
+| Solidify on merge | 🔴 | — | Blocked on real PR write + merge |
 
-**Outcome 1 is now real.** `python3 -m nullspace.builder` connects as an MCP
-client, calls `open_demand`, chooses the highest independent demand without a
-hardcoded want, states its reason, reads the registered queries, discovers a
-warehouse source from DataHub, and prints executable dbt SQL. Verified both ways:
-demand 2/3 visibly declined with a shortfall; demand 3/3 chose, generated SQL,
-claimed, and went solid.
+## Next actions (priority = redteam 3/3 then blockers)
 
-The builder now gates solidification on the warehouse, not code confidence:
-Postgres `EXPLAIN` plus a five-row sample must return every demanded field. The
-proof is bound into DataHub resolution history as `sql_validated`. Verified:
-source `ecommerce.revenue_events`, four returned columns, 3 sample rows,
-`Seq Scan`. Review replay:
-`python3 -m nullspace.builder --review /tmp/nullspace-builder-receipt.json`
-returned `datahub_still_matches: true`.
-
-Failure path also proven: generated SQL naming `missing_column` was refused by
-Postgres, the ghost stayed `claimed` (never solid), and DataHub returned the
-bound `sql_validation_failed` event with the exact `UndefinedColumn` reason.
-
-## THE ONE OPEN DECISION
-
-> **Does `dbt_project` get a public GitHub remote?** (D9)
-
-Until it does, the builder agent cannot open a real PR, and the README must not
-claim one. **Owner: Oscar.** Recommendation: create `Morkeeth/nullspace-dbt` public.
-Everything else in Phase 1 proceeds without it.
-
-## Workstreams
-
-| # | Workstream | Status | Owner next | Pointer |
-|---|---|---|---|---|
-| 1 | Dev environment / substrate | ✅ Done & verified live tonight | — | `compose.yaml`, `infra/` |
-| 2 | Join Treaty MVP | ✅ Built & verified (13/13) — **not shipping; spine gets ported** | — | `app/join_treaty/`, `scripts/eval.sh` |
-| 3 | Product-scope ruling | ✅ **CLOSED** — Nullspace | — | `rulings/002` |
-| 4 | **Nullspace Phase 1 — schema · lineage · native Owners** | ✅ **DataHub read-back verified** | — | Lane A `nullspace/emit.py` |
-| 5 | Nullspace Phase 2 — read-after-write + idempotency | ✅ **20-process concurrency verified** | — | `nullspace/persist.py` |
-| 6 | Real builder-agent decision | ✅ choose + reason + source discovery + generated SQL; decline path verified | — | `python3 -m nullspace.builder` |
-| 7 | **OSS contribution** | 🔴 Blocked: no `Morkeeth/datahub` fork and no upstream write permission | Oscar | DataHub docs candidate researched |
-| 8 | Stranger path / secret hygiene | ✅ `datahub` on PATH; Compose valid; gitleaks clean | — | `scripts/install-deps.sh`, `compose.yaml` |
-
-## Live DataHub witness (2026-08-08 21:55 UTC)
-
-| Claim | DataHub returned |
-|---|---|
-| solid schema | `segment VARCHAR`, `mrr DOUBLE`, `month VARCHAR`, `churned_mrr DOUBLE` |
-| schema source | `requester contracts: union of declared query fields` |
-| upstream lineage | `total=1` → `postgres,local-warehouse.warehouse.ecommerce.revenue_events,DEV` |
-| native ownership | 3 Owners: `revenue-copilot-1.0.0`, `finance-agent-2.3.1`, `board-deck-writer-0.9.0`; type `nullspace_requester` |
-| contract payoff | `3 running, 0 blocked`; schema read back from DataHub |
-| builder decision | chose highest demand (3/3), generated SQL from 3 query contracts and DataHub source |
-| SQL execution proof | `EXPLAIN` passed; 4 demanded columns returned; 3 real rows sampled |
-| SQL failure proof | invalid column refused; state remained `claimed`; DataHub history names failure |
-| review replay | saved decision/SQL/proof; DataHub re-read still matched exactly |
-| decline path | `demand 2 of 3; 1 more requester agent must ask` |
-| PR | **still false**: `file:///workspace/dbt_project#...`; no remote |
-| fresh-clone acceptance | volumes/store wiped; README-only path `101s`; `16 passed, 0 failed, 1 pending` (D9 only) |
-
-Concurrency witness: 10 simultaneous requester processes through live DataHub
-returned one deterministic ghost URN, `demand=10`, `unique_requesters=10`; offline
-stress reached 20/20.
-
-## Next actions
-
-- **Oscar:** rule D9 (public remote for `dbt_project` / `Morkeeth/nullspace-dbt`).
-- **Oscar:** create/fork `Morkeeth/datahub` if the upstream OSS PR remains required;
-  this agent has no upstream write permission and no fork exists.
-- **Cursor build agent:** complete; hand back SQL-proof receipt and trunk.
-- **Claude Lane B:** rebase onto Cursor; make acceptance eval rerunnable (current
-  fixed demand finds yesterday's solid asset on a second run), then board reveal
-  and submission package. Do not overwrite Lane A files.
+1. **Lane B:** GraphQL board (R1 / multimodel 3/3) — judged URL must die if GMS dies.
+2. **Lane B:** `scripts/eval_nullspace.py` R8 — stop `ghost_count(WANT.split()[0])`; match exact want/URN; `--cold` should hard-reset nullspace assets (file says LANE B).
+3. **Oscar:** Cursor GitHub App → add `Morkeeth/nullspace-dbt` (or run builder as Morkeeth) → new PR with grain SQL + body → merge → `python3 -m nullspace.cli finalize --want "…"`.
+4. **Lane A:** do not rewrite `emit.py`; keep generation tier disclosed. `release_claim` on SQL validation failure shipped (R7b).
 
 ## Canonical docs
 
-- Build brief: **`docs/collab/handoffs/003-nullspace-roadmap.md`** ← start here
-- Ruling + the retracted scan: `docs/collab/rulings/002-nullspace-commit.md`
-- Decisions log (append-only): `docs/collab/DECISIONS.md`
-- How we collaborate: `docs/collab/PROTOCOL.md`
-- ⚠️ `docs/final-ranking.md` is **SUPERSEDED** — retained as history, carries a banner
-- Lane A worker: `cursor/datahub-hack-setup-4c9d`
-- Night brief: `docs/collab/handoffs/004-night-run-2026-08-08.md`
-- Lane contract: `docs/collab/LANES.md`
+- Redteam: `docs/collab/reviews/redteam-2026-08-09.md`
+- Multimodel: `docs/collab/reviews/multimodel-2026-08-09.md`
+- HANDOFF 006: `docs/collab/handoffs/006-to-cursor-retraction-and-two-bugs.md`
