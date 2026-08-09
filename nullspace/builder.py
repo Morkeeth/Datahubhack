@@ -75,22 +75,84 @@ def _plan_key(want: str) -> str:
     return want.strip().lower()
 
 
-def save_agent_plan(want: str, plan: BuildPlan) -> None:
-    """Persist the real builder agent's decision for the MCP build tool."""
+def save_agent_plan(
+    want: str, plan: BuildPlan, *, dh: DataHubClient | None = None
+) -> None:
+    """Persist the builder plan on the ghost URN (catalog SoT) + optional file cache."""
+    payload = asdict(plan)
+    client = dh
+    if client is None:
+        try:
+            probe = DataHubClient()
+            client = probe if probe.healthy() else None
+        except Exception:  # noqa: BLE001
+            client = None
+    if client is not None:
+        from datahub.metadata.schema_classes import DatasetPropertiesClass
+        from nullspace.urns import ghost_urn
+
+        urn = ghost_urn(want)
+        props = client.graph.get_aspect(urn, DatasetPropertiesClass)
+        if props is not None:
+            custom = dict(props.customProperties or {})
+            custom["nullspace.builder_plan"] = json.dumps(payload, sort_keys=True)
+            client.emit_aspect(
+                urn,
+                DatasetPropertiesClass(
+                    name=props.name,
+                    description=props.description,
+                    customProperties=custom,
+                ),
+            )
+            read_back = client.dataset_custom_properties(urn).get(
+                "nullspace.builder_plan"
+            )
+            if read_back != custom["nullspace.builder_plan"]:
+                raise RuntimeError(
+                    "DataHub builder_plan read-after-write failed for "
+                    f"{urn!r}"
+                )
+
+    # Write-through cache only — deleting it must not lose the plan.
     data: dict[str, Any] = {}
     if _PLAN_STORE.exists():
         try:
             data = json.loads(_PLAN_STORE.read_text(encoding="utf-8"))
         except (json.JSONDecodeError, OSError):
             data = {}
-    data[_plan_key(want)] = asdict(plan)
+    data[_plan_key(want)] = payload
     _PLAN_STORE.parent.mkdir(parents=True, exist_ok=True)
     temp = _PLAN_STORE.with_suffix(f".{os.getpid()}.tmp")
     temp.write_text(json.dumps(data, indent=2), encoding="utf-8")
     os.replace(temp, _PLAN_STORE)
 
 
-def _load_agent_plan(want: str) -> BuildPlan | None:
+def _load_agent_plan(
+    want: str, *, dh: DataHubClient | None = None
+) -> BuildPlan | None:
+    client = dh
+    if client is None:
+        try:
+            probe = DataHubClient()
+            client = probe if probe.healthy() else None
+        except Exception:  # noqa: BLE001
+            client = None
+    if client is not None:
+        from nullspace.urns import ghost_urn
+
+        props = client.dataset_custom_properties(ghost_urn(want))
+        raw_plan = props.get("nullspace.builder_plan")
+        if raw_plan:
+            try:
+                raw = json.loads(raw_plan)
+                if isinstance(raw.get("upstream_urns"), list):
+                    raw["upstream_urns"] = tuple(raw["upstream_urns"])
+                if isinstance(raw.get("source_tables"), list):
+                    raw["source_tables"] = tuple(raw["source_tables"])
+                return BuildPlan(**raw)
+            except (TypeError, ValueError, json.JSONDecodeError):
+                pass
+
     if not _PLAN_STORE.exists():
         return None
     try:
@@ -259,7 +321,7 @@ def validate_model_sql(
 
 def plan_for_demand(want: str, ns: Nullspace | None = None) -> BuildPlan:
     """Use a real builder-agent plan, otherwise an explicitly disclosed fallback."""
-    agent_plan = _load_agent_plan(want)
+    agent_plan = _load_agent_plan(want, dh=ns.dh if ns is not None else None)
     if agent_plan is not None:
         return agent_plan
 
@@ -606,7 +668,7 @@ def solidify_after_merge(
             event="pr_merged",
             detail=viewed.stdout.strip(),
         )
-    agent_plan = _load_agent_plan(want)
+    agent_plan = _load_agent_plan(want, dh=ns.dh)
     if agent_plan is not None:
         plan = agent_plan
     else:
@@ -667,7 +729,7 @@ def build_and_solidify(ns: Nullspace, want: str, *, builder_id: str = "builder-1
             f"shortfall is 1 executable model; {detail}"
         ) from exc
     plan = replace(plan, validation=validation)
-    save_agent_plan(want, plan)
+    save_agent_plan(want, plan, dh=ns.dh)
     ns.record_resolution(
         want,
         agent_id=builder_id,
@@ -912,7 +974,7 @@ async def run_builder_agent() -> dict[str, Any]:
             )
             return declined
 
-        save_agent_plan(want, plan)
+        save_agent_plan(want, plan, dh=DataHubClient())
         print(f"GENERATION TIER: {plan.generation_tier}")
         print(f"GRAIN: {plan.grain_reason}")
         print("GENERATED SQL:")
@@ -927,7 +989,7 @@ async def run_builder_agent() -> dict[str, Any]:
         built["upstream_urns"] = plan.all_upstreams()
         built["generation_tier"] = plan.generation_tier
         built["grain_reason"] = plan.grain_reason
-        verified_plan = _load_agent_plan(want) or plan
+        verified_plan = _load_agent_plan(want, dh=DataHubClient()) or plan
         # BUG-1: never KeyError on refusal — receipt must carry the reason.
         if built.get("status") in {"declined", "refused", "error"} or not built.get(
             "urn"

@@ -145,6 +145,17 @@ python3 -m nullspace.cli contract-status --want "…"
 
 Why ghosts are Dataset URNs: [docs/design/why-a-dataset-urn.md](docs/design/why-a-dataset-urn.md).
 
+Demand as a stock ingestion source (the RFC with a connector behind it):
+
+```bash
+datahub ingest -c infra/datahub/nullspace_demand.yml
+./scripts/ingest-demand-from-warehouse-logs.sh   # postgres error log → demand
+```
+
+Ghosts carry **structured properties**, **Query** contracts, **Owners from the
+first miss**, and the fulfillment PR in **institutionalMemory**. Merge→solid
+can be driven by webhook: `python3 -m nullspace.webhook` (:8790).
+
 ## Subtraction proof (Law 2)
 
 With GMS unreachable, three isolated agents each refuse — there is no shared

@@ -12,6 +12,8 @@ from datahub.metadata.schema_classes import (
     DatasetLineageTypeClass,
     DatasetPropertiesClass,
     GlobalTagsClass,
+    InstitutionalMemoryClass,
+    InstitutionalMemoryMetadataClass,
     NumberTypeClass,
     OtherSchemaClass,
     OwnerClass,
@@ -19,10 +21,19 @@ from datahub.metadata.schema_classes import (
     OwnershipTypeClass,
     OwnershipTypeInfoClass,
     OwnershipTypeKeyClass,
+    QueryLanguageClass,
+    QueryPropertiesClass,
+    QuerySourceClass,
+    QueryStatementClass,
+    QuerySubjectClass,
+    QuerySubjectsClass,
     SchemaFieldClass,
     SchemaFieldDataTypeClass,
     SchemaMetadataClass,
     StringTypeClass,
+    StructuredPropertiesClass,
+    StructuredPropertyDefinitionClass,
+    StructuredPropertyValueAssignmentClass,
     TagAssociationClass,
     TagPropertiesClass,
     UpstreamClass,
@@ -39,9 +50,47 @@ _PLATFORM_URN = f"urn:li:dataPlatform:{PLATFORM}"
 _REQUESTER_TYPE_ID = "nullspace_requester"
 _REQUESTER_TYPE_URN = f"urn:li:ownershipType:{_REQUESTER_TYPE_ID}"
 
+_SP_DEMAND = "urn:li:structuredProperty:nullspace.demand"
+_SP_STATE = "urn:li:structuredProperty:nullspace.state"
+_SP_WANT = "urn:li:structuredProperty:nullspace.want"
+_STRUCTURED_DEFS = (
+    (_SP_DEMAND, "nullspace.demand", "urn:li:dataType:datahub.number", "Nullspace demand"),
+    (_SP_STATE, "nullspace.state", "urn:li:dataType:datahub.string", "Nullspace state"),
+    (_SP_WANT, "nullspace.want", "urn:li:dataType:datahub.string", "Nullspace want"),
+)
+
 
 def _audit() -> AuditStampClass:
     return AuditStampClass(time=now_ms(), actor=_ACTOR)
+
+
+def ensure_structured_property_definitions(dh: DataHubClient) -> None:
+    """Register nullspace.* structured properties on stock GMS (idempotent)."""
+    audit = _audit()
+    for urn, qname, value_type, display in _STRUCTURED_DEFS:
+        dh.emit_aspect(
+            urn,
+            StructuredPropertyDefinitionClass(
+                qualifiedName=qname,
+                displayName=display,
+                valueType=value_type,
+                entityTypes=["urn:li:entityType:datahub.dataset"],
+                cardinality="SINGLE",
+                description=(
+                    f"{display} — demand-side metadata for assets that do not "
+                    "exist yet (Nullspace)"
+                ),
+                immutable=False,
+                created=audit,
+                lastModified=audit,
+            ),
+        )
+        returned = dh.graph.get_aspect(urn, StructuredPropertyDefinitionClass)
+        if returned is None or returned.qualifiedName != qname:
+            raise RuntimeError(
+                "DataHub structuredProperty definition read-after-write failed: "
+                f"returned {returned!r}, expected {qname!r}"
+            )
 
 
 def emit_ghost(dh: DataHubClient, ghost: Ghost) -> dict[str, Any]:
@@ -50,7 +99,6 @@ def emit_ghost(dh: DataHubClient, ghost: Ghost) -> dict[str, Any]:
     description = (
         f"Nullspace {'SOLID' if ghost.state == 'solid' else 'GHOST'} for demand: {ghost.want}"
     )
-    # Preserve catalog-resident contracts across lifecycle mirrors (SoT is GMS).
     prior = dh.dataset_custom_properties(ghost.urn)
     custom = {
         "nullspace.demand": str(ghost.demand),
@@ -74,6 +122,10 @@ def emit_ghost(dh: DataHubClient, ghost: Ghost) -> dict[str, Any]:
     }
     if prior.get("nullspace.contracts"):
         custom["nullspace.contracts"] = prior["nullspace.contracts"]
+    if prior.get("nullspace.query_urns"):
+        custom["nullspace.query_urns"] = prior["nullspace.query_urns"]
+    if prior.get("nullspace.builder_plan"):
+        custom["nullspace.builder_plan"] = prior["nullspace.builder_plan"]
 
     props = DatasetPropertiesClass(
         name=ghost.dataset_name,
@@ -96,6 +148,14 @@ def emit_ghost(dh: DataHubClient, ghost: Ghost) -> dict[str, Any]:
         GlobalTagsClass(tags=[TagAssociationClass(tag=tag_urn)]),
     )
 
+    # First-class lifecycle (maintainer-visible). Dual-write customProperties so the
+    # GraphQL board keeps working without a Lane B change this weekend.
+    _emit_structured_lifecycle(dh, ghost)
+    if ghost.requesters:
+        _emit_requester_ownership(dh, ghost)
+    if ghost.pr_url:
+        _emit_pr_institutional_memory(dh, ghost)
+
     if ghost.state == "solid":
         if not ghost.schema_fields or not ghost.upstream_urns:
             raise RuntimeError(
@@ -106,7 +166,6 @@ def emit_ghost(dh: DataHubClient, ghost: Ghost) -> dict[str, Any]:
             )
         _emit_schema(dh, ghost)
         _emit_lineage(dh, ghost)
-        _emit_requester_ownership(dh, ghost)
 
     witness = dh.solid_witness(ghost.urn)
     if not dh.wait_for_search_urn(ghost.want, ghost.urn):
@@ -130,6 +189,66 @@ def emit_ghost(dh: DataHubClient, ghost: Ghost) -> dict[str, Any]:
                 f"expected {sorted(ghost.upstream_urns)}"
             )
     return witness
+
+
+def _emit_structured_lifecycle(dh: DataHubClient, ghost: Ghost) -> None:
+    ensure_structured_property_definitions(dh)
+    audit = _audit()
+    dh.emit_aspect(
+        ghost.urn,
+        StructuredPropertiesClass(
+            properties=[
+                StructuredPropertyValueAssignmentClass(
+                    propertyUrn=_SP_DEMAND,
+                    values=[float(ghost.demand)],
+                    created=audit,
+                    lastModified=audit,
+                ),
+                StructuredPropertyValueAssignmentClass(
+                    propertyUrn=_SP_STATE,
+                    values=[ghost.state],
+                    created=audit,
+                    lastModified=audit,
+                ),
+                StructuredPropertyValueAssignmentClass(
+                    propertyUrn=_SP_WANT,
+                    values=[ghost.want],
+                    created=audit,
+                    lastModified=audit,
+                ),
+            ]
+        ),
+    )
+    returned = dh.graph.get_aspect(ghost.urn, StructuredPropertiesClass)
+    if returned is None:
+        raise RuntimeError(
+            "DataHub structuredProperties read-after-write failed: returned None"
+        )
+    by_urn = {p.propertyUrn: list(p.values) for p in returned.properties}
+    if by_urn.get(_SP_STATE) != [ghost.state]:
+        raise RuntimeError(
+            "DataHub structuredProperties state mismatch: "
+            f"returned {by_urn.get(_SP_STATE)!r}, expected {[ghost.state]!r}"
+        )
+
+
+def _emit_pr_institutional_memory(dh: DataHubClient, ghost: Ghost) -> None:
+    """Surface the fulfillment PR on the dataset Links tab (stock aspect)."""
+    assert ghost.pr_url
+    memory = InstitutionalMemoryClass(
+        elements=[
+            InstitutionalMemoryMetadataClass(
+                url=ghost.pr_url,
+                description=(
+                    "Nullspace builder change reference — merge solidifies this ghost"
+                    if str(ghost.pr_url).startswith("https://github.com/")
+                    else "Nullspace local change reference (not a GitHub PR)"
+                ),
+                createStamp=_audit(),
+            )
+        ]
+    )
+    dh.emit_aspect(ghost.urn, memory)
 
 
 def _field_type(native_type: str) -> SchemaFieldDataTypeClass:
@@ -169,8 +288,6 @@ def _emit_schema(dh: DataHubClient, ghost: Ghost) -> None:
 
 
 def _emit_lineage(dh: DataHubClient, ghost: Ghost) -> None:
-    # Emit through the official SDK (same path as schema/ownership). Do not
-    # attach systemMetadata — that caused ingestProposal 400s on stock GMS.
     lineage = UpstreamLineageClass(
         upstreams=[
             UpstreamClass(
@@ -194,6 +311,7 @@ def _emit_lineage(dh: DataHubClient, ghost: Ghost) -> None:
 
 
 def _emit_requester_ownership(dh: DataHubClient, ghost: Ghost) -> None:
+    """Requesters are native Owners from the first miss — not only after solidify."""
     dh.emit_aspect(
         _REQUESTER_TYPE_URN,
         OwnershipTypeKeyClass(id=_REQUESTER_TYPE_ID),
@@ -297,15 +415,20 @@ def _verify_solid_witness(ghost: Ghost, witness: dict[str, Any]) -> None:
         )
 
 
+def _contract_query_urn(agent_id: str, want: str, sql: str) -> str:
+    digest = hashlib.sha1(
+        f"{agent_id}|{want.strip().lower()}|{sql}".encode()
+    ).hexdigest()[:20]
+    return f"urn:li:query:nullspace_{digest}"
+
+
 def emit_contracts(
     dh: DataHubClient, urn: str, contracts: list[dict[str, Any]]
 ) -> dict[str, Any]:
-    """Write requester query contracts onto the ghost dataset in GMS.
+    """Write requester contracts as Query entities + dual-write JSON on the ghost.
 
-    Stock DataHub v1.7.0 has no Demand/Contract aspect we can register mid-hackathon
-    without a GMS rebuild — verified by staying on SDK stock aspects only. Closest
-    first-class home on an existing dataset URN: `datasetProperties.customProperties`
-    key `nullspace.contracts` (JSON), next to resolution history, pending an RFC aspect.
+    Queries are first-class (QueryProperties + QuerySubjects → ghost URN).
+    ``nullspace.contracts`` JSON remains so the board/hydrate keep working.
     """
     props = dh.graph.get_aspect(urn, DatasetPropertiesClass)
     if props is None:
@@ -313,8 +436,44 @@ def emit_contracts(
             f"emit_contracts refused: no datasetProperties on {urn!r}; "
             "shortfall is 1 ghost already mirrored to DataHub"
         )
+    query_urns: list[str] = []
+    audit = _audit()
+    for row in contracts:
+        sql = str(row.get("sql") or "")
+        agent_id = str(row.get("agent_id") or "unknown")
+        want = str(row.get("want") or "")
+        qurn = _contract_query_urn(agent_id, want, sql)
+        fields = row.get("needs_fields") or []
+        dh.emit_aspect(
+            qurn,
+            QueryPropertiesClass(
+                statement=QueryStatementClass(
+                    value=sql or f"-- fields: {', '.join(map(str, fields))}",
+                    language=QueryLanguageClass.SQL,
+                ),
+                source=QuerySourceClass.MANUAL,
+                created=audit,
+                lastModified=audit,
+                name=f"nullspace:{agent_id}",
+                description=json.dumps(
+                    {
+                        "want": want,
+                        "agent_id": agent_id,
+                        "needs_fields": list(fields),
+                    },
+                    sort_keys=True,
+                ),
+            ),
+        )
+        dh.emit_aspect(
+            qurn,
+            QuerySubjectsClass(subjects=[QuerySubjectClass(entity=urn)]),
+        )
+        query_urns.append(qurn)
+
     custom = dict(props.customProperties or {})
     custom["nullspace.contracts"] = json.dumps(contracts)
+    custom["nullspace.query_urns"] = ",".join(query_urns)
     updated = DatasetPropertiesClass(
         name=props.name,
         description=props.description,
@@ -327,7 +486,11 @@ def emit_contracts(
             "DataHub contracts read-after-write failed: "
             f"returned {read_back.get('nullspace.contracts')!r}"
         )
-    return {"urn": urn, "properties": read_back}
+    return {
+        "urn": urn,
+        "properties": read_back,
+        "query_urns": query_urns,
+    }
 
 
 def board_snapshot(ghosts: list[Ghost]) -> dict[str, Any]:

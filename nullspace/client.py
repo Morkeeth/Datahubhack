@@ -149,11 +149,18 @@ class DataHubClient:
 
     def solid_witness(self, urn: str) -> dict[str, Any]:
         """Return exactly what GMS currently stores for the solid-asset claims."""
+        from datahub.metadata.schema_classes import (
+            InstitutionalMemoryClass,
+            StructuredPropertiesClass,
+        )
+
         props = self.graph.get_aspect(urn, DatasetPropertiesClass)
         tags_aspect = self.graph.get_aspect(urn, GlobalTagsClass)
         schema = self.graph.get_aspect(urn, SchemaMetadataClass)
         lineage = self.graph.get_aspect(urn, UpstreamLineageClass)
         ownership = self.graph.get_aspect(urn, OwnershipClass)
+        structured = self.graph.get_aspect(urn, StructuredPropertiesClass)
+        memory = self.graph.get_aspect(urn, InstitutionalMemoryClass)
 
         fields = None
         if schema is not None:
@@ -184,6 +191,20 @@ class DataHubClient:
                 for owner in ownership.owners
             ]
 
+        structured_props = []
+        if structured is not None:
+            structured_props = [
+                {"propertyUrn": p.propertyUrn, "values": list(p.values)}
+                for p in structured.properties
+            ]
+
+        links = []
+        if memory is not None:
+            links = [
+                {"url": el.url, "description": el.description}
+                for el in memory.elements
+            ]
+
         return {
             "urn": urn,
             "properties": dict(props.customProperties or {}) if props else None,
@@ -193,6 +214,8 @@ class DataHubClient:
             "schemaMetadata": None if fields is None else {"fields": fields},
             "lineage": {"upstreams": upstreams, "count": len(upstreams)},
             "ownership": {"owners": owners, "count": len(owners)},
+            "structuredProperties": structured_props,
+            "institutionalMemory": links,
         }
 
     def wait_for_indexed_upstreams(

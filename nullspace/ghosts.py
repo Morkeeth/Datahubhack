@@ -419,6 +419,39 @@ class Nullspace:
         props = self.dh.dataset_custom_properties(urn)
         if not props:
             return []
+        # Prefer first-class Query entities when present.
+        query_urns = [
+            q for q in (props.get("nullspace.query_urns") or "").split(",") if q
+        ]
+        if query_urns:
+            from datahub.metadata.schema_classes import QueryPropertiesClass
+
+            rows: list[dict[str, Any]] = []
+            for qurn in query_urns:
+                qp = self.dh.graph.get_aspect(qurn, QueryPropertiesClass)
+                if qp is None or qp.statement is None:
+                    continue
+                desc = qp.description or ""
+                needs: list[str] = []
+                agent_id = (qp.name or "").removeprefix("nullspace:") or "unknown"
+                try:
+                    meta = json.loads(desc)
+                    if isinstance(meta, dict):
+                        needs = list(meta.get("needs_fields") or [])
+                        agent_id = str(meta.get("agent_id") or agent_id)
+                except (TypeError, ValueError, json.JSONDecodeError):
+                    needs = []
+                rows.append(
+                    {
+                        "agent_id": agent_id,
+                        "want": want,
+                        "sql": qp.statement.value,
+                        "needs_fields": needs,
+                        "query_urn": qurn,
+                    }
+                )
+            if rows:
+                return rows
         try:
             rows = json.loads(props.get("nullspace.contracts") or "[]")
         except (TypeError, ValueError):
