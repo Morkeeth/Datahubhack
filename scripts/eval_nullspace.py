@@ -168,17 +168,33 @@ async def main() -> int:
         if os.path.exists(contracts):
             os.remove(contracts)
             print(f"(cold: removed {contracts})")
-        # Catalog is SoT — cold means hollow graph + hollow cache.
-        print("(cold: nullspace reset)")
-        reset = subprocess.run(
-            [sys.executable, "-m", "nullspace.cli", "reset"],
-            capture_output=True,
-            text=True,
-        )
-        print(reset.stdout or reset.stderr)
-        if reset.returncode != 0:
-            bad(f"cold reset failed (exit {reset.returncode})")
-            return summary(started)
+        # `--cold` used to call `nullspace reset`, which HARD-DELETES every
+        # asset on platform nullspace. The README points judges at this command.
+        # Running our own documented verification therefore destroyed the demo
+        # graph — 41 harvested wants and 395 attributed requesters — and it would
+        # have done the same to a judge mid-evaluation, or to us mid-recording.
+        #
+        # Cold means "this eval starts from nothing", not "the catalog starts
+        # from nothing". It now clears only its own caches and its own want.
+        # Wiping everything is still available, but you have to ask for it by
+        # name and it tells you what it is about to do.
+        if "--wipe-catalog" in sys.argv:
+            print("(cold: --wipe-catalog — hard-deleting EVERY nullspace asset)")
+            reset = subprocess.run(
+                [sys.executable, "-m", "nullspace.cli", "reset"],
+                capture_output=True,
+                text=True,
+            )
+            print(reset.stdout or reset.stderr)
+            if reset.returncode != 0:
+                bad(f"cold reset failed (exit {reset.returncode})")
+                return summary(started)
+        else:
+            print(
+                f"(cold: caches cleared; catalog left alone. This eval uses a "
+                f"fresh want, so it needs no wipe. Pass --wipe-catalog to "
+                f"hard-delete every nullspace asset.)"
+            )
 
     head("CHECK 0 — DataHub is answering")
     try:
