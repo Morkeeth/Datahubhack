@@ -161,6 +161,19 @@
     padding: 4rem 2rem; text-align: left;
     color: var(--muted); font-size: 1.0625rem;
   }
+  .gone {
+    background: var(--negative); color: var(--paper);
+    border-radius: 8px; padding: 3rem 2rem;
+  }
+  .gone h2 {
+    font-size: clamp(1.5rem, 3.4vw, 1.875rem); font-weight: 300;
+    letter-spacing: -0.03em; margin: 0 0 1rem;
+  }
+  .gone p { color: var(--muted-dark); max-width: 38rem; margin: 0 0 0.75rem; }
+  .gone .src {
+    font-family: "IBM Plex Mono", ui-monospace, monospace;
+    font-size: 0.75rem; overflow-wrap: anywhere;
+  }
   footer {
     border-top: 1px solid var(--hair);
     margin-top: 3rem; padding: 1.5rem 0 4rem;
@@ -288,9 +301,21 @@ async function refresh() {
     `<div><b>${c.ghost || 0}</b> asked for, not yet built</div>` +
     `<div><b>${c.claimed || 0}</b> claimed by a builder</div>` +
     `<div><b>${c.solid || 0}</b> made real</div>` +
-    `<div><b>${asked}</b> requests from <b>${voices}</b> agents</div>`;
+    `<div><b>${asked}</b> requests from <b>${voices}</b> agents</div>` +
+    `<div>read live from <b>DataHub</b></div>`;
 
   const el = document.getElementById('plates');
+  if (data.catalog && data.catalog !== 'live') {
+    // Law 2, shown rather than claimed. This board keeps no copy of its own.
+    el.innerHTML = `<div class="gone">
+      <h2>The catalog is gone, so this is gone.</h2>
+      <p>${esc(data.reason || '')}</p>
+      <p class="src">${esc(data.source || '')} — ${esc(data.detail || '')}</p>
+    </div>`;
+    document.getElementById('ledger').innerHTML =
+      '<div><b>—</b> nothing to show without DataHub</div>';
+    return;
+  }
   el.innerHTML = g.length
     ? g.map(plate).join('')
     : `<div class="waiting">No agent has missed yet. The board fills when one does.</div>`;
