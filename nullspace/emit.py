@@ -93,6 +93,13 @@ def emit_ghost(dh: DataHubClient, ghost: Ghost) -> dict[str, Any]:
     )
 
     if ghost.state == "solid":
+        if not ghost.schema_fields or not ghost.upstream_urns:
+            raise RuntimeError(
+                "solid emit refused: refusing to mirror a solid ghost with "
+                f"{len(ghost.schema_fields)} schema fields and "
+                f"{len(ghost.upstream_urns)} upstreams; shortfall is a hydrated "
+                "builder schema + lineage (refusing empty overwrite)"
+            )
         _emit_schema(dh, ghost)
         _emit_lineage(dh, ghost)
         _emit_requester_ownership(dh, ghost)

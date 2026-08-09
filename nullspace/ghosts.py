@@ -13,6 +13,7 @@ with custom properties:
 from __future__ import annotations
 
 import json
+import re
 from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass, field
@@ -351,12 +352,31 @@ class Nullspace:
             ]
         except (TypeError, ValueError):
             resolution = []
+        schema_fields: list[dict[str, Any]] = []
+        upstream_urns: list[str] = []
+        state = props.get("nullspace.state", "ghost")
+        if state == "solid":
+            # Rehydrate native aspects so a later miss cannot mirror an empty
+            # solid and wipe schema/lineage in DataHub (LENS 1 finding).
+            witness = self.dh.solid_witness(urn)
+            schema_fields = [
+                {
+                    "name": field["fieldPath"],
+                    "native_type": field.get("nativeDataType") or "VARCHAR",
+                    "nullable": field.get("nullable", True),
+                }
+                for field in (witness.get("schemaMetadata") or {}).get("fields", [])
+            ]
+            upstream_urns = [
+                upstream["dataset"]
+                for upstream in (witness.get("lineage") or {}).get("upstreams", [])
+            ]
         return Ghost(
             want=props.get("nullspace.want", want),
             urn=urn,
             dataset_name=ghost_dataset_name(want),
             demand=int(props.get("nullspace.demand", "0")),
-            state=props.get("nullspace.state", "ghost"),
+            state=state,
             requesters=[
                 requester
                 for requester in props.get("nullspace.requesters", "").split(",")
@@ -365,8 +385,26 @@ class Nullspace:
             resolution=resolution,
             pr_url=props.get("nullspace.pr_url") or None,
             claimed_by=props.get("nullspace.claimed_by") or None,
+            schema_fields=schema_fields,
+            upstream_urns=upstream_urns,
             schema_source=props.get("nullspace.schema_source") or None,
         )
+
+
+def _want_tokens(want: str) -> list[str]:
+    return [token for token in re.split(r"[^a-z0-9]+", want.lower()) if len(token) >= 4]
+
+
+def _catalog_hit_matches_want(want: str, urn: str) -> bool:
+    """Reject fuzzy search noise: require meaningful want tokens in the URN/name."""
+    tokens = _want_tokens(want)
+    if not tokens:
+        return True
+    haystack = urn.lower()
+    # Majority of significant tokens must appear (DataHub often returns loose hits).
+    matched = sum(1 for token in tokens if token in haystack)
+    need = max(1, (len(tokens) + 1) // 2)
+    return matched >= need
 
 
 def consumer_search(
@@ -381,13 +419,19 @@ def consumer_search(
     if dh is not None:
         hits = dh.search_datasets(want)
         real_hits = []
+        want_key = _key(want)
         for hit in hits:
             urn = hit.get("urn", "")
             if ":nullspace," not in urn:
-                real_hits.append(hit)
+                if _catalog_hit_matches_want(want, urn):
+                    real_hits.append(hit)
                 continue
+            # DataHub search is fuzzy: other solid ghosts must not satisfy a
+            # different demand phrase. Only the same want counts as found.
             props = dh.dataset_custom_properties(urn)
-            if props.get("nullspace.state") == "solid":
+            if props.get("nullspace.state") != "solid":
+                continue
+            if _key(props.get("nullspace.want", "")) == want_key:
                 real_hits.append(hit)
         hits = real_hits
     if hits:

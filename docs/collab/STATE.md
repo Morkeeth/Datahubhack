@@ -2,112 +2,105 @@
 
 > The single source of truth for where this project is **right now**. If you only
 > open one file, open this one. Every agent updates it at the end of its turn.
+> **Witness rule (HANDOFF 005):** every row below carries the command that printed it.
 
-- **Last updated:** 2026-08-08 22:38 UTC by Cursor build agent (`bc-9950b172`)
-- **Phase:** **Builder decision + executable-SQL proof + replay receipt verified.**
-- **Deadline:** Mon 10 Aug 2026, 17:00 EDT / **23:00 Paris**
+- **Last updated:** 2026-08-09 07:25 UTC by Cursor Lane A (`bc-9950b172`)
+- **Phase:** **Close-the-gap: reset + fresh solid lineage re-earned; real PR blocked on write token.**
+- **Deadline:** Mon 10 Aug 2026, 17:00 EDT / **23:00 Paris** · **Freeze 18:00 Paris**
 - **Worker branch:** `cursor/datahub-hack-setup-4c9d` · repo `Morkeeth/nullspace`
+- **Brief:** `docs/collab/handoffs/005-final-38-hours.md`
 
 ## You are here
 
-Concept decided (D8: Nullspace). The pipeline runs against a live DataHub and every
-claim below was read back from the graph, not from a log line.
+HANDOFF 005 reported lineage missing on Oscar's laptop (aspect 404 / GraphQL
+total=0 on 7 ghosts). **On this Cloud Agent stack that finding is refuted for
+assets created after the SDK lineage emit** — see witness table. The stock
+`GET /aspects/<urn>?aspect=upstreamLineage` path NPEs (HTTP 500) on this GMS;
+the working aspect witness is `GET /entitiesV2/<urlencoded-urn>` (HTTP 200)
+plus GraphQL `lineage(UPSTREAM).total`.
 
-**Lane A and Lane B now meet at the real payoff.** Three MCP requester agents
-registered three different queries. Lane A took the union of their declared
-fields—not a hardcoded demo schema—wrote a dbt model over the disclosed revenue
-warehouse, and DataHub returned all four fields, one upstream, and all three
-requesters as native Owners. Every queued query flipped to `RUNS`: **3 running,
-0 blocked**.
+`python3 -m nullspace.cli reset` hard-deletes platform `nullspace` datasets and
+clears the file store. Verified hollow. A fresh ghost created after that reset
+solidified with schema, 3 requester Owners, aspect lineage, and GraphQL
+lineage ≥ 1.
 
-Ten simultaneous requester processes wrote through live DataHub and returned one
-ghost with `demand=10` and 10 distinct requesters. An offline 20-process stress
-also returned one ghost / demand 20. The file store now locks the entire
-read→DataHub write→atomic save transaction.
+**D9 repo exists and is PUBLIC** (`gh repo view Morkeeth/nullspace-dbt` → PUBLIC).
+**Still blocked:** `cursor[bot]` has **no push** to that repo (git push → 403).
+Until Oscar grants write or sets `NULLSPACE_DBT_TOKEN`, `pr_url` stays honest
+`file://`. Merge→solidify path is wired (`nullspace.cli finalize`) and waiting
+on that token.
 
-**Still false and stated plainly:** `pr_url` is `file://`; no PR exists until D9.
-Cold isolated acceptance eval now reports **16 passed, 0 failed, 1 pending**;
-the only pending item is D9. Lane A waits for the lineage search index as well
-as the direct aspect, so the UI-facing GraphQL read is green before solidify returns.
+## HANDOFF 005 checks
 
-**Outcome 1 is now real.** `python3 -m nullspace.builder` connects as an MCP
-client, calls `open_demand`, chooses the highest independent demand without a
-hardcoded want, states its reason, reads the registered queries, discovers a
-warehouse source from DataHub, and prints executable dbt SQL. Verified both ways:
-demand 2/3 visibly declined with a shortfall; demand 3/3 chose, generated SQL,
-claimed, and went solid.
+| # | Check | Status | Command / proof |
+|---|---|---|---|
+| 1 | `nullspace reset` → 0 nullspace assets | ✅ | `python3 -m nullspace.cli reset` → `deleted_count=6`, `datahub_nullspace_count=0`; follow-up `DataHubClient().list_nullspace_urns()` → `[]` |
+| 2 | Fresh solid: aspect + GraphQL lineage | ✅ | Asset `ghost_close_the_gap_revenue_lineage_1786260037_f60d0e8e` created after reset. `GET /entitiesV2/<urn>` → HTTP 200, `upstreamLineage.upstreams=[…revenue_events…]`. GraphQL `dataset.lineage(UPSTREAM).total=1`. Stock `GET /aspects/<urn>?aspect=upstreamLineage` → HTTP 500 (GMS NPE; not used as witness). |
+| 3 | schema + 3 Owners on same asset | ✅ | Same GraphQL read: fields `segment,mrr,month,churned_mrr`; 3 Owners type `nullspace_requester`. |
+| 4 | `pr_url` https + `gh pr view` OPEN | 🔴 | Blocked: `Morkeeth/nullspace-dbt` PUBLIC but push denied to `cursor[bot]`. `pr_url` = `file:///workspace/dbt_project#…`. Need `NULLSPACE_DBT_TOKEN` or collaborator write. |
+| 5 | Merge flips ghost to solid | 🔴 | Blocked on #4. Code path ready: `python3 -m nullspace.cli finalize --want "…"`. |
 
-The builder now gates solidification on the warehouse, not code confidence:
-Postgres `EXPLAIN` plus a five-row sample must return every demanded field. The
-proof is bound into DataHub resolution history as `sql_validated`. Verified:
-source `ecommerce.revenue_events`, four returned columns, 3 sample rows,
-`Seq Scan`. Review replay:
-`python3 -m nullspace.builder --review /tmp/nullspace-builder-receipt.json`
-returned `datahub_still_matches: true`.
+## Live DataHub witness (2026-08-09 07:22 UTC) — fresh post-reset asset
 
-Failure path also proven: generated SQL naming `missing_column` was refused by
-Postgres, the ghost stayed `claimed` (never solid), and DataHub returned the
-bound `sql_validation_failed` event with the exact `UndefinedColumn` reason.
+Asset:
+`urn:li:dataset:(urn:li:dataPlatform:nullspace,ghost_close_the_gap_revenue_lineage_1786260037_f60d0e8e,PROD)`
 
-## THE ONE OPEN DECISION
+| Claim | Command | Returned |
+|---|---|---|
+| reset hollow | `python3 -m nullspace.cli reset` then list platform nullspace | `datahub_nullspace_count=0` |
+| upstreamLineage aspect | `GET http://localhost:8080/entitiesV2/<urlencoded-urn>` | HTTP 200; upstreams = `postgres,local-warehouse.warehouse.ecommerce.revenue_events,DEV` |
+| GraphQL lineage | GraphQL `dataset(urn:…){ lineage(input:{direction:UPSTREAM,…}){ total } }` | `total=1` → revenue_events |
+| schemaMetadata | same GraphQL / entitiesV2 | `segment TEXT`, `mrr NUMERIC(14,2)`, `month TEXT`, `churned_mrr NUMERIC(14,2)` |
+| ownership | same GraphQL | 3 Owners: `revenue-copilot-1.0.0`, `finance-agent-2.3.1`, `board-deck-writer-0.9.0`; type `nullspace_requester` |
+| SQL gate | resolution event `sql_validated` on ghost | `EXPLAIN` Seq Scan; 4 columns; 3 sample rows |
+| PR | custom property `nullspace.pr_url` | **still false**: `file://…` — no push to nullspace-dbt |
 
-> **Does `dbt_project` get a public GitHub remote?** (D9)
+## THE OPEN BLOCKER (was D9)
 
-Until it does, the builder agent cannot open a real PR, and the README must not
-claim one. **Owner: Oscar.** Recommendation: create `Morkeeth/nullspace-dbt` public.
-Everything else in Phase 1 proceeds without it.
+> **`Morkeeth/nullspace-dbt` is PUBLIC. Oscar must grant write access** (add
+> collaborator / install app / provide `NULLSPACE_DBT_TOKEN`) so the builder can
+> open an OPEN PR. Until then the pitch ending stays `file://`.
 
 ## Workstreams
 
 | # | Workstream | Status | Owner next | Pointer |
 |---|---|---|---|---|
-| 1 | Dev environment / substrate | ✅ Done & verified live tonight | — | `compose.yaml`, `infra/` |
-| 2 | Join Treaty MVP | ✅ Built & verified (13/13) — **not shipping; spine gets ported** | — | `app/join_treaty/`, `scripts/eval.sh` |
-| 3 | Product-scope ruling | ✅ **CLOSED** — Nullspace | — | `rulings/002` |
-| 4 | **Nullspace Phase 1 — schema · lineage · native Owners** | ✅ **DataHub read-back verified** | — | Lane A `nullspace/emit.py` |
-| 5 | Nullspace Phase 2 — read-after-write + idempotency | ✅ **20-process concurrency verified** | — | `nullspace/persist.py` |
-| 6 | Real builder-agent decision | ✅ choose + reason + source discovery + generated SQL; decline path verified | — | `python3 -m nullspace.builder` |
-| 7 | **OSS contribution** | 🔴 Blocked: no `Morkeeth/datahub` fork and no upstream write permission | Oscar | DataHub docs candidate researched |
-| 8 | Stranger path / secret hygiene | ✅ `datahub` on PATH; Compose valid; gitleaks clean | — | `scripts/install-deps.sh`, `compose.yaml` |
+| 1 | Dev environment / substrate | ✅ Done | — | `compose.yaml`, `infra/` |
+| 2 | Join Treaty MVP | ✅ Built — **not shipping** | — | `app/join_treaty/` |
+| 3 | Product-scope ruling | ✅ CLOSED — Nullspace | — | `rulings/002` |
+| 4 | Phase 1 schema · lineage · Owners | ✅ Re-earned on fresh post-reset ghost | — | `nullspace/emit.py` |
+| 5 | read-after-write + idempotency | ✅ | — | `nullspace/persist.py` |
+| 6 | Builder-agent decision + SQL gate | ✅ | — | `python3 -m nullspace.builder` |
+| 6b | **`nullspace reset`** | ✅ Verified hollow | — | `python3 -m nullspace.cli reset` |
+| 6c | **Real GitHub PR + merge→solid** | 🔴 Blocked on write token to nullspace-dbt | Oscar | `NULLSPACE_DBT_TOKEN`, `cli finalize` |
+| 7 | OSS contribution | 🔴 Blocked: no fork / write | Oscar | — |
+| 8 | Stranger path / secret hygiene | ✅ | — | `scripts/install-deps.sh` |
+| 9 | Multi-model review (LENS 1/2/3) | ✅ Merged defect list | Cursor | `docs/collab/reviews/multimodel-2026-08-09.md` |
 
-## Live DataHub witness (2026-08-08 21:55 UTC)
+## Cold eval (post-fix, 2026-08-09)
 
-| Claim | DataHub returned |
-|---|---|
-| solid schema | `segment VARCHAR`, `mrr DOUBLE`, `month VARCHAR`, `churned_mrr DOUBLE` |
-| schema source | `requester contracts: union of declared query fields` |
-| upstream lineage | `total=1` → `postgres,local-warehouse.warehouse.ecommerce.revenue_events,DEV` |
-| native ownership | 3 Owners: `revenue-copilot-1.0.0`, `finance-agent-2.3.1`, `board-deck-writer-0.9.0`; type `nullspace_requester` |
-| contract payoff | `3 running, 0 blocked`; schema read back from DataHub |
-| builder decision | chose highest demand (3/3), generated SQL from 3 query contracts and DataHub source |
-| SQL execution proof | `EXPLAIN` passed; 4 demanded columns returned; 3 real rows sampled |
-| SQL failure proof | invalid column refused; state remained `claimed`; DataHub history names failure |
-| review replay | saved decision/SQL/proof; DataHub re-read still matched exactly |
-| decline path | `demand 2 of 3; 1 more requester agent must ask` |
-| PR | **still false**: `file:///workspace/dbt_project#...`; no remote |
-| fresh-clone acceptance | volumes/store wiped; README-only path `101s`; `16 passed, 0 failed, 1 pending` (D9 only) |
+```bash
+python3 -m nullspace.cli reset
+NULLSPACE_STORE=/tmp/nullspace-eval-fresh3.json \
+NULLSPACE_EVAL_WANT="fresh-nullspace-$(date +%s)" \
+python3 scripts/eval_nullspace.py --cold
+```
 
-Concurrency witness: 10 simultaneous requester processes through live DataHub
-returned one deterministic ghost URN, `demand=10`, `unique_requesters=10`; offline
-stress reached 20/20.
+Returned: **16 passed, 0 failed, 1 pending** (pending = real PR / D18 write token).
+Schema 4 fields, lineage 1, native Owners present on the solid asset.
 
 ## Next actions
 
-- **Oscar:** rule D9 (public remote for `dbt_project` / `Morkeeth/nullspace-dbt`).
-- **Oscar:** create/fork `Morkeeth/datahub` if the upstream OSS PR remains required;
-  this agent has no upstream write permission and no fork exists.
-- **Cursor build agent:** complete; hand back SQL-proof receipt and trunk.
-- **Claude Lane B:** rebase onto Cursor; make acceptance eval rerunnable (current
-  fixed demand finds yesterday's solid asset on a second run), then board reveal
-  and submission package. Do not overwrite Lane A files.
+- **Oscar:** grant write on `Morkeeth/nullspace-dbt` or export `NULLSPACE_DBT_TOKEN` — unblocks checks 4–5 (the pitch ending).
+- **Oscar:** fork `datahub-project/datahub` → `Morkeeth/datahub` if OSS bonus stays required.
+- **Claude Lane B (from multimodel ≥2/3):** board must read DataHub GraphQL (not a divergent temp file); judged MCP path must `register_query` so fallback trials schema is never the moonshot.
+- **Cursor Lane A:** waiting on write token for real PR; do not fake it.
 
 ## Canonical docs
 
-- Build brief: **`docs/collab/handoffs/003-nullspace-roadmap.md`** ← start here
-- Ruling + the retracted scan: `docs/collab/rulings/002-nullspace-commit.md`
-- Decisions log (append-only): `docs/collab/DECISIONS.md`
-- How we collaborate: `docs/collab/PROTOCOL.md`
-- ⚠️ `docs/final-ranking.md` is **SUPERSEDED** — retained as history, carries a banner
-- Lane A worker: `cursor/datahub-hack-setup-4c9d`
-- Night brief: `docs/collab/handoffs/004-night-run-2026-08-08.md`
+- Last 38h plan: **`docs/collab/handoffs/005-final-38-hours.md`**
+- Lane A prompt: `docs/collab/prompts/cursor-lane-a-close-the-gap.md`
+- Multimodel review: `docs/collab/prompts/cursor-multimodel-review.md`
+- Decisions log: `docs/collab/DECISIONS.md`
 - Lane contract: `docs/collab/LANES.md`
+- Worker branch: `cursor/datahub-hack-setup-4c9d`
