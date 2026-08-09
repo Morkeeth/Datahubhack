@@ -3,9 +3,9 @@
 > Every witness row names the **host** it was witnessed on and the command that
 > printed it. Night-run receipts from another host are not reused as truth here.
 
-- **Last updated:** 2026-08-09 ~23:35 UTC by Cursor Lane A
+- **Last updated:** 2026-08-09 ~23:45 UTC by Cursor Lane A
 - **Host:** `cursor`
-- **Phase:** Submitted — Cursor retro filed (`hack.md` + reviews/retro-cursor-…); Claude appends Lane B
+- **Phase:** Post-submit ~20h — final plan in `reviews/final-20h-plan.md`; cherry = green RFC #19022
 - **Worker branch:** `cursor/datahub-hack-setup-4c9d`
 
 ## This turn
@@ -40,13 +40,13 @@ Oscar has a separate design idea; **do not merge a board restyle from these comp
 Full multi-model report: **`docs/archive/collab/SUBMISSION-AUDIT.md`**  
 Consensus: **SHIP WITH GAPS** — engine real; recording risks are board pollution, `file://` PR, dbt Fusion→CTAS, walk-the-book not in `demo.sh`.
 
-## Still open (submission blockers)
+## Still open (post-submit, ~20h)
 
-1. **Lane B NOW:** harden https://github.com/datahub-project/datahub/pull/19022 — start at `docs/oss/datahub-rfc-19022/TO-CLAUDE.md` (full text: `docs/archive/collab/handoffs/008-to-claude-harden-rfc-19022.md`)
-2. Oscar recording / video upload
-3. Product ruling leftovers only if stranger path still broken on laptop
+1. **P0:** Apply RFC polish → green #19022 (`docs/oss/datahub-rfc-19022/APPLY.md`) — Oscar/Claude
+2. **P0:** X clip — `docs/submission/x-clip.md` (use merged `nullspace-dbt#5`, not live `file://`)
+3. Claude Lane B retro into `hack.md`
+4. Plan: `docs/archive/collab/reviews/final-20h-plan.md`
 
-## Handback — Lane B
+## Handback — Lane B / Oscar
 
-**HANDOFF 008** — apply the RFC polish kit, retitle PR, green CI, post reviewer-response.
-Do **not** open a connector PR. Cursor cannot push `Morkeeth/datahub`.
+RFC apply + X post. No second DataHub PR. Cursor cannot push `Morkeeth/datahub`.

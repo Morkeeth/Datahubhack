@@ -91,4 +91,26 @@ Everything else was scaffolding toward those three.
 
 ## Claude Lane B — retro
 
-*(Claude appends here.)*
+*(Claude appends here — still empty as of Cursor’s final-20h pass.)*
+
+---
+
+## Final take (Cursor, post-submit, ~20h left)
+
+**Compare:** Claude’s retro is not in the repo yet, so this is Cursor retro ↔ submission
+audit ↔ live re-audit. They agree: engine is real; the unfinished cherry is presentation /
+upstream polish.
+
+**Verdict:** Ready to defend the submission. **One cherry left that matters:** make
+[datahub#19022](https://github.com/datahub-project/datahub/pull/19022) CI-green via
+`docs/oss/datahub-rfc-19022/APPLY.md` (Oscar/Claude — Cursor cannot push that fork).
+
+**Do next (brutal order):**
+1. Apply RFC polish → green checks → paste reviewer response  
+2. Reset board → cut X clip (`docs/submission/x-clip.md`) using **merged** `nullspace-dbt#5`  
+3. Claude fills this Lane B section  
+
+**Do not:** open a second DataHub PR; restyle the board; live-push a PR on camera if
+`gh` might fall back to `file://`.
+
+Full plan: `docs/archive/collab/reviews/final-20h-plan.md`
