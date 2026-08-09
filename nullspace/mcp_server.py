@@ -162,10 +162,15 @@ def find_dataset(want: str, ctx: Context) -> dict[str, Any]:
     receipt["identified_by"] = how
     receipt["datahub_reachable"] = live is not None
     if live is None:
-        # Never let a degraded run look like a healthy one.
+        # Never let a degraded run look like a healthy one. This used to say the
+        # miss had been "recorded locally" — which stopped being true when Lane A
+        # made consumer_search refuse outright with GMS down (D24). A warning
+        # that describes behaviour the code no longer has is worse than none: it
+        # tells a reader demand was captured when nothing was.
         receipt["warning"] = (
-            "DataHub GMS was not reachable; demand was recorded locally only and "
-            "is NOT in the catalog."
+            "DataHub GMS was not reachable, so nothing was recorded anywhere. "
+            "Demand that the catalog never sees is not demand, and Nullspace "
+            "refuses rather than keeping a private copy."
         )
 
     if receipt["status"] == "miss_ghosted":

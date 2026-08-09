@@ -45,4 +45,37 @@ export PATH="${HOME}/.local/bin:${PATH}"
 datahub version || datahub --version || true
 "$PY" -c "import datahub_agent_context; print('datahub-agent-context OK')"
 
+# A stranger who follows the README gets a ghost that goes "solid" — and until
+# this was added, solid meant a tag in DataHub with no physical table anywhere,
+# because nothing installed dbt and no profile existed. `information_schema`
+# returned zero rows for the model the builder had just "shipped". A solid asset
+# nobody can select from is the exact kind of claim this project refuses to make,
+# so the tool that makes it true is part of the install, not a footnote.
+echo "==> Install dbt (so a solid asset is a real table, not just metadata)"
+"$PY" -m pip install --user "dbt-postgres" || \
+  echo "    WARNING: dbt-postgres did not install. A ghost can still go solid in" \
+       "DataHub, but no physical table will exist. Do not trust 'solid' until" \
+       "'dbt build' has run."
+
+if [ ! -f "${HOME}/.dbt/profiles.yml" ]; then
+  echo "==> Write ~/.dbt/profiles.yml for the Compose warehouse"
+  mkdir -p "${HOME}/.dbt"
+  cat > "${HOME}/.dbt/profiles.yml" <<'PROFILE'
+nullspace:
+  target: dev
+  outputs:
+    dev:
+      type: postgres
+      host: localhost
+      port: 5432
+      user: agent
+      password: agent
+      dbname: warehouse
+      schema: nullspace
+      threads: 4
+PROFILE
+else
+  echo "==> ~/.dbt/profiles.yml already exists — leaving it alone"
+fi
+
 echo "==> Install complete"
