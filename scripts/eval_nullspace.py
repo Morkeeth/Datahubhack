@@ -190,10 +190,34 @@ async def main() -> int:
                 bad(f"cold reset failed (exit {reset.returncode})")
                 return summary(started)
         else:
+            # Clear THIS want from the catalog and nothing else. The eval
+            # needs its own want to miss, which it cannot do while a solid
+            # asset for it exists — but that is one URN's problem, not a
+            # reason to hard-delete every ghost an organisation has
+            # accumulated. Scoped deletes keep the run repeatable without
+            # making the documented command destructive.
+            # Deleted over plain HTTP on purpose: this runs before anything
+            # else and must not depend on a client object that might have
+            # changed shape. One URN, by name, nothing else.
+            import urllib.parse
+            import urllib.request
+
+            from nullspace.urns import ghost_urn
+
+            urn = ghost_urn(WANT)
+            enc = urllib.parse.quote(urn, safe="")
+            try:
+                req = urllib.request.Request(
+                    f"{GMS}/openapi/v3/entity/dataset/{enc}", method="DELETE"
+                )
+                with urllib.request.urlopen(req, timeout=20) as r:
+                    print(f"(cold: cleared this eval's own want — HTTP {r.status})")
+            except Exception as exc:  # noqa: BLE001
+                print(f"(cold: nothing to clear for {WANT!r} — {type(exc).__name__})")
+            time.sleep(4)  # let the search index catch up before CHECK 1
             print(
-                f"(cold: caches cleared; catalog left alone. This eval uses a "
-                f"fresh want, so it needs no wipe. Pass --wipe-catalog to "
-                f"hard-delete every nullspace asset.)"
+                "(cold: every other nullspace asset left alone. Pass "
+                "--wipe-catalog to hard-delete all of them.)"
             )
 
     head("CHECK 0 — DataHub is answering")

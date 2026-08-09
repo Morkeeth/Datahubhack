@@ -3,326 +3,189 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Nullspace — the demand board</title>
+<title>Nullspace</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@300;600&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@300;400;600&display=swap" rel="stylesheet">
+<!--
+  THE NUMBERS, AND WHERE THEY COME FROM
+  ─────────────────────────────────────
+  Read live from a running DataHub at /api/board. Nothing on this page is
+  computed from a local file. If the catalog is unreachable the page says so and
+  shows nothing, because Nullspace keeps no copy of its own — a board that
+  outlives the catalog would prove the catalog was never load-bearing.
+
+    demand        datasetProperties.nullspace.demand on the ghost URN
+    requesters    ownership aspect, falling back to nullspace.requesters
+    state / tags  globalTags — urn:li:tag:ghost or urn:li:tag:solid
+    schema        schemaMetadata on the solid asset
+    upstream      lineage(UPSTREAM)
+    history       nullspace.resolution, written as each event happened
+
+  THE COLOUR ARGUMENT
+  ───────────────────
+  Five neutrals and one accent. The accent is spent on the MISS — an asset agents
+  wanted and could not get — and nowhere else on the page. When a want becomes
+  real its marks turn to ink and the accent leaves it entirely. That is what
+  being filled looks like. Nothing is red-as-alarm here: unmet demand is not a
+  failure of the system, it is the thing the system exists to show.
+
+  THE MARKS
+  ─────────
+  One mark is one agent that asked. Countable by eye, assertable in the DOM: the
+  marks in a row equal the demand printed beside them, exactly. No rounding, no
+  scaling, no chart library, no dependency.
+
+  There is no monospace on this page because there is no code on this page.
+-->
 <style>
-  /* ------------------------------------------------------------------
-     M1 DARKROOM — a latent image becoming a print.
-     Demand is already there and not yet visible. Solidifying is developing.
-     The dark card is the exposed negative. The flip to light is the print.
-     Spec: docs/design/design-prompt.md. Absence -> presence is a VALUE flip,
-     not a hue change, which is why solid gets no second accent colour.
-     ------------------------------------------------------------------ */
   :root {
-    --paper:      #fafafa;  /* the light narrative */
-    --negative:   #0c0c0e;  /* the dark data window */
-    --hair:       #e4e4e7;  /* hairline on light */
-    --hair-dark:  rgba(255,255,255,0.08);
-    --muted:      #6b6560;
-    --muted-dark: #8a8580;
-    --accent:     #0891b2;  /* demand accruing — cool, still waiting */
-    --safelight:  rgba(190, 58, 44, 0.022); /* ground wash only. never a dot. */
+    --n0: #ffffff;
+    --n1: #f2f1ef;
+    --n2: #d8d5d1;
+    --n3: #6f6a64;
+    --n4: #16150f;
+    --accent: #b8482c; /* THE MISS. one region. nowhere else. */
   }
   * { box-sizing: border-box; }
-  html { -webkit-text-size-adjust: 100%; }
   body {
-    margin: 0;
-    background: var(--paper);
-    background-image: linear-gradient(0deg, var(--safelight), var(--safelight));
-    color: var(--negative);
-    font-family: "IBM Plex Sans", -apple-system, Segoe UI, sans-serif;
-    font-weight: 300;
-    line-height: 1.5;
-    -webkit-font-smoothing: antialiased;
+    margin: 0; background: var(--n0); color: var(--n4);
+    font-family: "IBM Plex Sans", sans-serif; font-weight: 300;
+    font-size: 15px; line-height: 1.5; -webkit-font-smoothing: antialiased;
   }
-  .wrap { max-width: 61rem; margin: 0 auto; padding: 0 1.5rem; }
+  .wrap { max-width: 62rem; margin: 0 auto; padding: 0 1.5rem 5rem; }
+  h1 { font-weight: 600; font-size: clamp(2rem, 5vw, 2.75rem); letter-spacing: -0.03em; margin: 4rem 0 0.5rem; }
+  .lede { color: var(--n3); max-width: 36rem; margin: 0 0 1.5rem; }
+  .label { font-size: 10px; text-transform: uppercase; letter-spacing: .2em; font-weight: 600; color: var(--n3); }
+  a { color: var(--n4); text-underline-offset: 3px; }
+  .meta { color: var(--n3); font-size: 13px; }
 
-  /* ---------- masthead: no buttons. this is watched, not operated. ---------- */
-  header { padding: 4.5rem 0 2rem; }
-  h1 {
-    font-size: clamp(2.4rem, 6vw, 3.5rem);
-    font-weight: 600; letter-spacing: -0.04em;
-    margin: 0 0 0.75rem;
-  }
-  .standfirst {
-    font-size: 1.0625rem; color: var(--muted);
-    max-width: 34rem; margin: 0;
-  }
-  .ledger {
-    display: flex; gap: 2.25rem; flex-wrap: wrap;
-    border-top: 1px solid var(--hair);
-    margin-top: 2.5rem; padding-top: 1.25rem;
-    font-family: "IBM Plex Mono", ui-monospace, monospace;
-    font-size: 0.8125rem; color: var(--muted);
-  }
-  .ledger b { color: var(--negative); font-weight: 500; }
+  .ledger { border-top: 1px solid var(--n2); margin-top: 2rem; padding-top: 1.25rem;
+            display: flex; gap: 3rem; flex-wrap: wrap; }
+  .ledger .n { font-weight: 600; font-size: 1.5rem; letter-spacing: -0.02em; display: block; }
 
-  /* ---------- the negative: one card per ghost ---------- */
-  main { padding: 2rem 0 1rem; display: grid; gap: 1.25rem; }
-  .plate {
-    background: var(--negative); color: var(--paper);
-    border: 1px solid var(--negative); border-radius: 8px;
-    padding: 2rem 2rem 1.5rem;
-    transition: background 320ms ease-out, color 320ms ease-out, border-color 320ms ease-out;
-  }
-  .plate .want {
-    font-size: clamp(1.5rem, 3.4vw, 1.875rem);
-    font-weight: 300; letter-spacing: -0.03em;
-    margin: 0 0 0.25rem; line-height: 1.2;
-  }
-  .plate .urn {
-    font-family: "IBM Plex Mono", ui-monospace, monospace;
-    font-size: 0.75rem; color: var(--muted-dark);
-    word-break: break-all; margin: 0 0 1.75rem;
-    transition: color 320ms ease-out;
-  }
+  .row { border-top: 1px solid var(--n2); padding: 1.5rem 0; display: grid;
+         grid-template-columns: 1fr 16rem; gap: 1.5rem; }
+  .row h2 { font-size: 1.25rem; font-weight: 400; letter-spacing: -0.01em; margin: 0 0 0.35rem; }
+  .urn { color: var(--n3); font-size: 12px; overflow-wrap: anywhere; margin: 0.25rem 0 0.75rem; }
+  .count { font-weight: 600; font-size: 1.125rem; margin-bottom: 0.35rem; }
+  .marks { display: flex; flex-wrap: wrap; gap: 3px; align-content: flex-start; }
+  .m { width: 7px; height: 14px; background: var(--n4); display: block; }
+  .m.miss { background: var(--accent); }
 
-  /* the hero number. a count of independent minds — never a progress bar. */
-  .count { display: flex; align-items: baseline; gap: 1.25rem; flex-wrap: wrap; }
-  .count b {
-    font-family: "IBM Plex Mono", ui-monospace, monospace;
-    font-weight: 500; font-size: 4rem; line-height: 0.9;
-    color: var(--accent); font-variant-numeric: tabular-nums;
-  }
-  .count .label {
-    font-size: 0.6875rem; font-weight: 600;
-    text-transform: uppercase; letter-spacing: 0.11em;
-    color: var(--muted-dark);
-    transition: color 320ms ease-out;
-  }
-  .asked {
-    font-family: "IBM Plex Mono", ui-monospace, monospace;
-    font-size: 0.8125rem; margin-top: 1rem;
-    display: grid; gap: 0.2rem;
-  }
-  .asked span { display: block; }
+  .facts { margin-top: 0.75rem; }
+  .facts div { font-size: 13px; margin-bottom: 0.2rem; }
+  .facts .k { color: var(--n3); display: inline-block; min-width: 7.5rem; }
+  .history { margin-top: 1rem; }
+  .history div { font-size: 12px; color: var(--n3); margin-bottom: 0.15rem; }
+  .history .t { display: inline-block; min-width: 5rem; }
+  .history .e { display: inline-block; min-width: 8rem; color: var(--n4); }
 
-  /* ---------- the print: solid inverts. the one dramatic moment. ---------- */
-  .plate.solid {
-    background: var(--paper); color: var(--negative);
-    border-color: var(--hair);
-  }
-  .plate.solid .urn,
-  .plate.solid .count .label,
-  .plate.solid .state { color: var(--muted); }
-  .plate.solid .count b { color: var(--negative); }
-  .plate.developing .asked span { animation: rise 320ms ease-out both; }
-  .plate.developing .asked span:nth-child(2) { animation-delay: 0.06s; }
-  .plate.developing .asked span:nth-child(3) { animation-delay: 0.12s; }
-  .plate.developing .asked span:nth-child(4) { animation-delay: 0.18s; }
-  @keyframes rise { from { transform: translateY(4px); opacity: 0; } to { transform: none; opacity: 1; } }
-  @media (max-width: 560px) {
-    .history { font-size: 0.6875rem; white-space: normal; }
-    .plate { padding: 1.5rem 1.25rem 1.25rem; }
-  }
-  @media (prefers-reduced-motion: reduce) {
-    .plate, .plate.developing .asked span { transition: none; animation: none; }
-  }
-
-  .state {
-    font-size: 0.6875rem; font-weight: 600;
-    text-transform: uppercase; letter-spacing: 0.11em;
-    color: var(--muted-dark); float: right;
-    transition: color 320ms ease-out;
-  }
-
-  /* ---------- what the print reveals ---------- */
-  .print {
-    border-top: 1px solid var(--hair);
-    margin-top: 1.75rem; padding-top: 1.25rem;
-    font-family: "IBM Plex Mono", ui-monospace, monospace;
-    font-size: 0.8125rem;
-    display: grid; gap: 0.55rem;
-  }
-  .print dt {
-    font-family: "IBM Plex Sans", sans-serif; font-weight: 600;
-    font-size: 0.6875rem; text-transform: uppercase; letter-spacing: 0.11em;
-    color: var(--muted);
-  }
-  .print dd { margin: 0.15rem 0 0; overflow-wrap: anywhere; }
-  .print dd.fields { word-break: keep-all; line-height: 1.9; }
-  .print em { font-style: normal; color: var(--muted); font-size: 0.75rem; }
-  .print a { color: var(--accent); text-underline-offset: 3px; }
-
-  .history {
-    white-space: pre-wrap;
-    font-family: "IBM Plex Mono", ui-monospace, monospace;
-    font-size: 0.75rem; color: var(--muted-dark);
-    margin-top: 1.25rem; display: grid; gap: 0.15rem;
-    transition: color 320ms ease-out;
-  }
-  .plate.solid .history { color: var(--muted); }
-
-  /* ---------- empty: design the waiting ---------- */
-  .waiting {
-    border: 1px dashed var(--hair); border-radius: 8px;
-    padding: 4rem 2rem; text-align: left;
-    color: var(--muted); font-size: 1.0625rem;
-  }
-  .gone {
-    background: var(--negative); color: var(--paper);
-    border-radius: 8px; padding: 3rem 2rem;
-  }
-  .gone h2 {
-    font-size: clamp(1.5rem, 3.4vw, 1.875rem); font-weight: 300;
-    letter-spacing: -0.03em; margin: 0 0 1rem;
-  }
-  .gone p { color: var(--muted-dark); max-width: 38rem; margin: 0 0 0.75rem; }
-  .gone .src {
-    font-family: "IBM Plex Mono", ui-monospace, monospace;
-    font-size: 0.75rem; overflow-wrap: anywhere;
-  }
-  footer {
-    border-top: 1px solid var(--hair);
-    margin-top: 3rem; padding: 1.5rem 0 4rem;
-    color: var(--muted); font-size: 0.8125rem; max-width: 40rem;
-  }
-  footer code {
-    font-family: "IBM Plex Mono", ui-monospace, monospace;
-    font-size: 0.75rem;
-  }
+  .waiting, .gone { border: 1px solid var(--n2); padding: 3rem 2rem; margin-top: 2rem; color: var(--n3); }
+  .gone h2 { color: var(--n4); font-weight: 400; margin: 0 0 0.75rem; }
+  .limits { border-top: 1px solid var(--n2); margin-top: 3rem; padding-top: 1.25rem;
+            color: var(--n3); font-size: 13px; max-width: 40rem; }
+  @media (max-width: 720px) { .row { grid-template-columns: 1fr; } }
 </style>
 </head>
 <body>
 <div class="wrap">
-  <header>
-    <h1>Nullspace</h1>
-    <p class="standfirst">
-      A catalog entry for data that does not exist yet. Agents search DataHub,
-      miss, and the miss becomes the record. Enough agents ask and a builder
-      makes it real.
-    </p>
-    <div class="ledger" id="ledger"></div>
-  </header>
+  <h1>Nullspace</h1>
+  <p class="lede">
+    A catalog entry for data that does not exist yet. Agents search DataHub, miss,
+    and the miss becomes the record. One mark is one agent that asked.
+  </p>
+  <p class="label"><a href="/order-book">the order book →</a></p>
 
-  <main id="plates"></main>
-
-  <footer id="footer">
-    The warehouse rows and the requester identities are disclosed demo data.
-    The demand, the schema, the lineage and the ownership are read back out of a
-    running DataHub — nothing on this page is replayed from a file.
-  </footer>
+  <div class="ledger" id="ledger"></div>
+  <div id="rows"></div>
+  <div class="limits" id="limits"></div>
 </div>
 
 <script>
-const seen = new Map();
+function esc(s){return String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
+function clock(ms){ return ms ? new Date(ms).toTimeString().slice(0,8) : '--:--:--'; }
+// One mark is one agent. Never rounded — the DOM is assertable against the
+// printed figure beside it.
+function marks(n, miss){ return Array.from({length:n},()=>`<i class="m${miss?' miss':''}"></i>`).join(''); }
 
-function esc(s) {
-  return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-}
-function stamp(ms) {
-  const d = new Date(ms);
-  return d.toTimeString().slice(0, 8);
-}
-
-// The resolution history is the receipt. It has to read as English, not as a
-// JSON blob pasted into a UI — a wall of braces reads as "we could not be
-// bothered", which is the one impression this page cannot afford.
-function detail(e) {
-  const raw = e.detail;
-  if (!raw) return '';
-  if (!raw.trim().startsWith('{')) return raw;
-  let d;
-  try { d = JSON.parse(raw); } catch { return raw; }
-  if (e.event === 'sql_validated') {
-    return `${d.status} against ${d.source_relation} — ${(d.returned_columns || []).length} columns, ${d.sample_row_count} rows sampled, ${d.explain_node}`;
-  }
-  if (e.event === 'sql_validation_failed') {
-    return `refused by the warehouse — ${d.reason || d.status || 'no reason given'}`;
-  }
-  if (e.event === 'solidify') {
-    const n = (d.fields || []).length;
-    const up = (d.upstreams || []).length;
-    return `${n} fields, ${up} upstream, schema from the requesters' own queries`;
-  }
-  return Object.entries(d).map(([k, v]) => `${k}=${Array.isArray(v) ? v.length : v}`).join(' ');
+// The history is a receipt, so it reads as English rather than as a JSON blob
+// pasted into a page.
+function detail(e){
+  const raw = e.detail; if(!raw) return '';
+  if(!String(raw).trim().startsWith('{')) return raw;
+  let d; try { d = JSON.parse(raw); } catch { return raw; }
+  if(e.event === 'sql_validated')
+    return `${d.status} against ${d.source_relation} — ${(d.returned_columns||[]).length} columns, ${d.sample_row_count} rows sampled`;
+  if(e.event === 'solidify')
+    return `${(d.fields||[]).length} fields, ${(d.upstreams||[]).length} upstream, schema from the requesters' own queries`;
+  if(e.event === 'pr_merged') return `merged — ${d.url||''}`;
+  return Object.entries(d).map(([k,v])=>`${k}=${Array.isArray(v)?v.length:v}`).join(' ');
 }
 
-function plate(g) {
+function row(g){
   const solid = g.state === 'solid';
-  const developing = seen.has(g.urn) && seen.get(g.urn) !== 'solid' && solid;
-  const requesters = (g.requesters || []).map(r => `<span>${esc(r)}</span>`).join('');
-
-  let print = '';
-  if (solid) {
-    const fields = (g.schema_fields || []).map(f => {
-      const name = typeof f === 'string' ? f : (f.name ?? '');
-      const type = (typeof f === 'object' && f.native_type) ? ` <em>${esc(f.native_type)}</em>` : '';
-      return `${esc(name)}${type}`;
-    }).join('&nbsp;&nbsp;');
-    const up = (g.upstream_urns || []).map(u => `<dd>${esc(u)}</dd>`).join('');
-    const pr = g.pr_url
-      ? (/^https?:/.test(g.pr_url)
-          ? `<dt>Pull request</dt><dd><a href="${esc(g.pr_url)}" target="_blank" rel="noreferrer">${esc(g.pr_url)}</a></dd>`
-          : `<dt>Pull request</dt><dd>${esc(g.pr_url)} — local branch, no remote PR</dd>`)
-      : '';
-    print = `<dl class="print">
-      ${fields ? `<div><dt>Schema, from what the agents asked for</dt><dd class="fields">${fields}</dd></div>` : ''}
-      ${g.schema_source ? `<div><dt>Derived by</dt><dd>${esc(g.schema_source)}</dd></div>` : ''}
-      ${up ? `<div><dt>Upstream</dt>${up}</div>` : ''}
-      ${pr ? `<div>${pr}</div>` : ''}
-    </dl>`;
-  }
-
-  const history = (g.resolution || []).slice(-7).map(e =>
-    `<div>${stamp(e.at_ms)}  ${esc(e.event.padEnd(16))}${esc(e.agent_id || '')}  ${esc(detail(e))}</div>`
-  ).join('');
-
-  seen.set(g.urn, g.state);
-
-  return `<article class="plate ${solid ? 'solid' : ''} ${developing ? 'developing' : ''}">
-    <span class="state">${esc(g.state)}</span>
-    <h2 class="want">${esc(g.want)}</h2>
-    <p class="urn">${esc(g.urn)}</p>
-    <div class="count">
-      <b>${g.demand}</b>
-      <span class="label">agents asked${solid ? ' · now it exists' : ''}</span>
+  const fields = (g.schema_fields||[]).map(f => typeof f === 'string' ? f : f.name).filter(Boolean);
+  return `<div class="row" data-want="${esc(g.want)}">
+    <div>
+      <h2>${esc(g.want)}</h2>
+      <div class="label">${esc(g.state)}</div>
+      <p class="urn">${esc(g.urn)}</p>
+      <div class="facts">
+        ${(g.requesters||[]).length ? `<div><span class="k">asked by</span>${g.requesters.map(esc).join(', ')}</div>` : ''}
+        ${solid && fields.length ? `<div><span class="k">schema</span>${fields.map(esc).join(', ')}</div>` : ''}
+        ${solid && g.schema_source ? `<div><span class="k">derived by</span>${esc(g.schema_source)}</div>` : ''}
+        ${solid && (g.upstream_urns||[]).length ? `<div><span class="k">upstream</span>${esc(g.upstream_urns[0])}</div>` : ''}
+        ${g.pr_url && /^https?:/.test(g.pr_url)
+          ? `<div><span class="k">pull request</span><a href="${esc(g.pr_url)}" target="_blank" rel="noreferrer">${esc(g.pr_url)}</a></div>` : ''}
+      </div>
+      <div class="history">${(g.resolution||[]).slice(-7).map(e =>
+        `<div><span class="t">${clock(e.at_ms)}</span><span class="e">${esc(e.event)}</span>${esc(detail(e))}</div>`).join('')}</div>
     </div>
-    <div class="asked">${requesters}</div>
-    ${print}
-    ${history ? `<div class="history">${history}</div>` : ''}
-  </article>`;
+    <div>
+      <div class="count">${g.demand}</div>
+      <div class="marks">${marks(g.demand, !solid)}</div>
+      <div class="meta">${solid ? 'now it exists' : 'agents asked'}</div>
+    </div>
+  </div>`;
 }
 
-async function refresh() {
-  let data;
-  try {
-    data = await (await fetch('/api/board')).json();
-  } catch (e) { return; }
+async function refresh(){
+  let d; try { d = await (await fetch('/api/board')).json(); } catch(e){ return; }
 
-  const g = data.ghosts || [];
-  const c = data.counts || {};
-  const asked = g.reduce((n, x) => n + (x.demand || 0), 0);
-  const voices = new Set(g.flatMap(x => x.requesters || [])).size;
-
-  document.getElementById('ledger').innerHTML =
-    `<div><b>${c.ghost || 0}</b> asked for, not yet built</div>` +
-    `<div><b>${c.claimed || 0}</b> claimed by a builder</div>` +
-    `<div><b>${c.solid || 0}</b> made real</div>` +
-    `<div><b>${asked}</b> requests from <b>${voices}</b> agents</div>` +
-    `<div>read live from <b>DataHub</b></div>`;
-
-  const el = document.getElementById('plates');
-  if (data.catalog && data.catalog !== 'live') {
-    // Law 2, shown rather than claimed. This board keeps no copy of its own.
-    el.innerHTML = `<div class="gone">
-      <h2>The catalog is gone, so this is gone.</h2>
-      <p>${esc(data.reason || '')}</p>
-      <p class="src">${esc(data.source || '')} — ${esc(data.detail || '')}</p>
-    </div>`;
-    document.getElementById('ledger').innerHTML =
-      '<div><b>—</b> nothing to show without DataHub</div>';
+  if (d.catalog && d.catalog !== 'live') {
+    document.getElementById('ledger').innerHTML = '';
+    document.getElementById('rows').innerHTML =
+      `<div class="gone"><h2>The catalog is gone, so this is gone.</h2>
+       <p>${esc(d.reason||'')}</p><p class="meta">${esc(d.source||'')} — ${esc(d.detail||'')}</p></div>`;
     return;
   }
-  el.innerHTML = g.length
-    ? g.map(plate).join('')
+
+  const g = d.ghosts || [], c = d.counts || {};
+  const asked = g.reduce((n,x)=>n+(x.demand||0),0);
+  const voices = new Set(g.flatMap(x=>x.requesters||[])).size;
+
+  document.getElementById('ledger').innerHTML = `
+    <div><span class="n">${c.ghost||0}</span><span class="label">asked for, not built</span></div>
+    <div><span class="n">${c.claimed||0}</span><span class="label">being built</span></div>
+    <div><span class="n">${c.solid||0}</span><span class="label">made real</span></div>
+    <div><span class="n">${asked}</span><span class="label">requests from ${voices} agents</span></div>`;
+
+  const shown = g.slice(0, 12);
+  document.getElementById('rows').innerHTML = shown.length
+    ? shown.map(row).join('') + (g.length > shown.length
+        ? `<div class="waiting">and ${g.length - shown.length} more in the catalog — the order book ranks them.</div>` : '')
     : `<div class="waiting">No agent has missed yet. The board fills when one does.</div>`;
 }
 
-refresh();
-setInterval(refresh, 1200);
+document.getElementById('limits').innerHTML =
+  `<p class="label">What this page cannot see</p>
+   <p>Requester identities and warehouse rows are disclosed demo traffic; the misses behind
+   them are genuine. Every figure here is read back from a running DataHub — this page holds
+   no copy of its own, which is why it goes blank rather than stale when the catalog stops
+   answering.</p>`;
+
+refresh(); setInterval(refresh, 2000);
 </script>
 </body>
 </html>

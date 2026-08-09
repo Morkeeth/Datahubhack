@@ -6,148 +6,108 @@
 <title>Nullspace — the order book</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@300;600&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400&family=IBM+Plex+Sans:wght@300;400;600&display=swap" rel="stylesheet">
+<!--
+  THE NUMBERS ON THIS PAGE, AND WHERE THEY COME FROM
+  ──────────────────────────────────────────────────
+  Every figure is read live from a running DataHub at /api/order-book. Nothing is
+  computed from a local file and nothing is a fixture; if the catalog is
+  unreachable this page shows nothing rather than a stale copy.
+
+    demand per want      datasetProperties.nullspace.demand on the ghost URN
+    who asked            ownership aspect, falling back to nullspace.requesters
+    open since           earliest at_ms in nullspace.resolution
+    schema delivered     schemaMetadata on the solid asset
+    upstream             lineage(UPSTREAM).total
+    pull request         nullspace.pr_url
+    queries now running  /api/unblocked — the ONE number here that is not
+                         metadata. It is the registered queries executed in a
+                         READ ONLY transaction, because "these agents are no
+                         longer blocked" is a claim only a query can settle.
+
+  Requester identities and warehouse rows are disclosed demo traffic. The misses
+  behind them are genuine Postgres `relation ... does not exist` errors.
+
+  THE COLOUR ARGUMENT
+  ───────────────────
+  Five neutrals and one accent. The accent is spent on the MISS — demand that has
+  not been filled — and nowhere else. It is never on the headline, never on what
+  succeeded, never twice. A want that was built loses the accent entirely: that
+  is what being filled looks like. Nothing here is red-as-alarm, because nothing
+  here is broken; unmet demand is not an error, it is the product.
+
+  THE MARKS
+  ─────────
+  One mark is one agent that asked. The marks are countable by eye and assertable
+  in the DOM: the marks inside a row equal that row's printed demand exactly. The
+  two lanes below the header are at one shared scale. The built lane is nearly
+  empty. That is not a rendering bug and must not be "fixed" — it is the most
+  honest image on the page.
+-->
 <style>
-  /* Same system as the board (M1 Darkroom, docs/design/design-prompt.md): light
-     narrative, dark data windows, one accent that carries meaning. The board is
-     the mechanism; this page is the argument, so the dark window here is the
-     unmet demand itself — the thing the organisation does not have. */
   :root {
-    --paper: #fafafa; --negative: #0c0c0e; --hair: #e4e4e7;
-    --muted: #6b6560; --muted-dark: #8a8580; --accent: #0891b2;
-    --safelight: rgba(190, 58, 44, 0.022);
+    --n0: #ffffff;   /* page */
+    --n1: #f2f1ef;   /* rails */
+    --n2: #d8d5d1;   /* hairlines */
+    --n3: #6f6a64;   /* secondary text */
+    --n4: #16150f;   /* ink */
+    --accent: #b8482c; /* THE MISS. one region. nowhere else. */
   }
   * { box-sizing: border-box; }
   body {
-    margin: 0; background: var(--paper);
-    background-image: linear-gradient(0deg, var(--safelight), var(--safelight));
-    color: var(--negative);
-    font-family: "IBM Plex Sans", -apple-system, Segoe UI, sans-serif;
-    font-weight: 300; line-height: 1.5; -webkit-font-smoothing: antialiased;
+    margin: 0; background: var(--n0); color: var(--n4);
+    font-family: "IBM Plex Sans", sans-serif; font-weight: 300;
+    font-size: 15px; line-height: 1.5; -webkit-font-smoothing: antialiased;
   }
-  .wrap { max-width: 63rem; margin: 0 auto; padding: 0 1.5rem; }
-  header { padding: 4.5rem 0 0; }
-  h1 { font-size: clamp(2.4rem, 6vw, 3.5rem); font-weight: 600; letter-spacing: -0.04em; margin: 0 0 0.75rem; }
-  .standfirst { font-size: 1.0625rem; color: var(--muted); max-width: 36rem; margin: 0; }
-  nav { margin-top: 1.25rem; font-family: "IBM Plex Mono", monospace; font-size: 0.8125rem; }
-  nav a { color: var(--accent); text-underline-offset: 3px; }
+  .wrap { max-width: 62rem; margin: 0 auto; padding: 0 1.5rem 5rem; }
 
-  /* The headline: the number that is the whole product. */
-  .headline {
-    background: var(--negative); color: var(--paper);
-    border-radius: 8px; padding: 2.5rem 2rem; margin: 2.5rem 0 2rem;
-    display: grid; grid-template-columns: repeat(4, 1fr); gap: 2rem;
-    align-items: end;
-  }
-  @media (max-width: 760px) { .headline { grid-template-columns: repeat(2, 1fr); } }
-  .fig b {
-    display: block; font-family: "IBM Plex Mono", monospace; font-weight: 500;
-    font-size: 4rem; line-height: 0.9; color: var(--accent);
-    font-variant-numeric: tabular-nums;
-  }
-  .fig.quiet b { color: var(--paper); font-size: 2.25rem; }
-  .fig span {
-    display: block; margin-top: 0.6rem; max-width: 15rem;
-    font-size: 0.6875rem; font-weight: 600; text-transform: uppercase;
-    letter-spacing: 0.11em; color: var(--muted-dark);
+  h1 { font-weight: 600; font-size: clamp(2rem, 5vw, 2.75rem); letter-spacing: -0.03em; margin: 4rem 0 0.5rem; }
+  .lede { color: var(--n3); max-width: 34rem; margin: 0 0 1.5rem; }
+  .label { font-size: 10px; text-transform: uppercase; letter-spacing: .2em; font-weight: 600; color: var(--n3); }
+  a { color: var(--n4); text-underline-offset: 3px; }
+
+  /* two lanes, one shared scale */
+  .lanes { border-top: 1px solid var(--n2); padding-top: 1.5rem; margin: 2rem 0 3rem; }
+  .lane { margin-bottom: 1.75rem; }
+  .lane .head { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 0.5rem; }
+  .lane .n { font-weight: 600; font-size: 1.5rem; letter-spacing: -0.02em; }
+  .marks { display: flex; flex-wrap: wrap; gap: 3px; }
+  .m { width: 7px; height: 14px; background: var(--n4); display: block; }
+  .m.miss { background: var(--accent); }
+  .lane.empty .marks::after {
+    content: "none"; font-size: 10px; letter-spacing: .2em;
+    text-transform: uppercase; color: var(--n3);
   }
 
-  h2 {
-    font-size: 0.6875rem; font-weight: 600; text-transform: uppercase;
-    letter-spacing: 0.11em; color: var(--muted);
-    border-top: 1px solid var(--hair); padding-top: 1.25rem; margin: 3rem 0 0;
-  }
-  table { width: 100%; border-collapse: collapse; table-layout: fixed; }
-  col.c-demand { width: 6rem; } col.c-want { width: 34%; }
-  col.c-who { width: 22%; } col.c-rest { width: auto; }
-  thead th {
-    text-align: left; font-size: 0.6875rem; font-weight: 600;
-    text-transform: uppercase; letter-spacing: 0.11em; color: var(--muted);
-    padding: 1.25rem 1rem 0.6rem 0; font-weight: 600;
-  }
-  tbody td {
-    border-top: 1px solid var(--hair); padding: 1.1rem 1rem 1.1rem 0;
-    vertical-align: top; font-size: 0.9375rem;
-  }
-  tbody tr:hover { background: rgba(0,0,0,0.015); }
-  .want { font-size: 1.0625rem; letter-spacing: -0.01em; }
-  .num {
-    font-family: "IBM Plex Mono", monospace; font-weight: 500; font-size: 1.75rem;
-    color: var(--accent); font-variant-numeric: tabular-nums; white-space: nowrap;
-  }
-  .filled .num { color: var(--negative); }
-  .who, .meta {
-    font-family: "IBM Plex Mono", monospace; font-size: 0.75rem; color: var(--muted);
-  }
-  .who span { display: block; overflow-wrap: anywhere; }
-  .meta { overflow-wrap: anywhere; }
-  .fields { color: var(--muted); font-size: 0.8125rem; }
-  a.pr { color: var(--accent); font-family: "IBM Plex Mono", monospace; font-size: 0.75rem; }
-  /* The payoff. Dark, because it is the one block on this page that is not a
-     read-back from the catalog — it is the queries actually running. */
-  .unblocked {
-    background: var(--negative); color: var(--paper);
-    border-radius: 8px; padding: 1.5rem 1.75rem; margin: 0.5rem 0 1.5rem;
-    font-family: "IBM Plex Mono", monospace; font-size: 0.8125rem;
-  }
-  .unblocked h3 {
-    font-family: "IBM Plex Sans", sans-serif; font-size: 0.6875rem; font-weight: 600;
-    text-transform: uppercase; letter-spacing: 0.11em; color: var(--muted-dark);
-    margin: 0 0 1rem;
-  }
-  .unblocked .q { margin-bottom: 1.1rem; overflow-wrap: anywhere; }
-  .unblocked .agent { color: var(--accent); }
-  .unblocked .sql { color: var(--muted-dark); display: block; margin: 0.2rem 0; }
-  .unblocked .verdict { color: var(--paper); }
-  .unblocked .verdict.blocked { color: #e5806b; }
-  .unblocked table { width: auto; margin-top: 0.35rem; }
-  .unblocked td, .unblocked th {
-    border: none; padding: 0.1rem 1.25rem 0.1rem 0; font-size: 0.75rem;
-    color: var(--muted-dark); vertical-align: top;
-  }
-  .unblocked th { text-transform: none; letter-spacing: 0; font-weight: 500; color: var(--paper); }
-  .unblocked .note { color: var(--muted-dark); margin-top: 0.5rem; }
-  .empty { color: var(--muted); padding: 2.5rem 0; }
-  .who .more { color: var(--accent); }
-  .tail { color: var(--muted); font-size: 0.875rem; padding: 1.25rem 0 0; max-width: 40rem; }
-  .gone { background: var(--negative); color: var(--paper); border-radius: 8px; padding: 3rem 2rem; margin-top: 2.5rem; }
-  .gone h3 { font-size: 1.5rem; font-weight: 300; letter-spacing: -0.03em; margin: 0 0 1rem; }
-  .gone p { color: var(--muted-dark); max-width: 38rem; }
-  footer {
-    border-top: 1px solid var(--hair); margin-top: 3.5rem; padding: 1.5rem 0 4rem;
-    color: var(--muted); font-size: 0.8125rem; max-width: 42rem;
-  }
-  @media (max-width: 640px) {
-    thead { display: none; }
-    tbody td { display: block; padding: 0.35rem 0; border-top: none; }
-    tbody tr { display: block; border-top: 1px solid var(--hair); padding: 1.25rem 0; }
-    .headline { gap: 2rem; }
-  }
+  .row { border-top: 1px solid var(--n2); padding: 1.25rem 0; display: grid; grid-template-columns: 1fr 16rem; gap: 1.5rem; }
+  .row h2 { font-size: 1.0625rem; font-weight: 400; margin: 0 0 0.3rem; }
+  .meta { color: var(--n3); font-size: 13px; }
+  .count { font-weight: 600; font-size: 1.125rem; margin-bottom: 0.35rem; }
+  .row .marks { align-content: flex-start; }
+  .tail { color: var(--n3); padding: 1.25rem 0 0; border-top: 1px solid var(--n2); max-width: 38rem; }
+  h3.sec { font-size: 10px; text-transform: uppercase; letter-spacing: .2em; font-weight: 600; color: var(--n3); margin: 3rem 0 0; }
+
+  /* the ending — literal SQL, so mono is allowed here and only here */
+  .q { margin: 1.25rem 0; }
+  .q .sql { font-family: "IBM Plex Mono", monospace; font-size: 12px; color: var(--n3); display: block; margin: 0.3rem 0; overflow-wrap: anywhere; }
+  .q table { border-collapse: collapse; margin-top: 0.4rem; }
+  .q td, .q th { padding: 0.1rem 1.5rem 0.1rem 0; font-size: 13px; text-align: left; font-weight: 400; }
+  .q th { color: var(--n3); font-size: 10px; letter-spacing: .2em; text-transform: uppercase; }
+
+  .limits { border-top: 1px solid var(--n2); margin-top: 3rem; padding-top: 1.25rem; color: var(--n3); font-size: 13px; max-width: 40rem; }
+  .gone { border: 1px solid var(--n2); padding: 3rem 2rem; margin-top: 2rem; }
+  @media (max-width: 720px) { .row { grid-template-columns: 1fr; } }
 </style>
 </head>
 <body>
 <div class="wrap">
-  <header>
-    <h1>The order book</h1>
-    <p class="standfirst">
-      What your agents needed this week and could not get. Every row is a table
-      that does not exist, ranked by how many independent agents asked for it.
-    </p>
-    <nav><a href="/">← the demand board</a></nav>
-  </header>
+  <h1>The order book</h1>
+  <p class="lede">What your agents needed and could not get. One mark is one agent that asked.</p>
+  <p class="label"><a href="/">← the demand board</a></p>
 
-  <div class="headline" id="headline"></div>
+  <div id="lanes" class="lanes"></div>
   <div id="body"></div>
-
-  <footer id="foot">
-    The requester identities and the warehouse rows are disclosed demo data. The
-    demand, the schemas, the lineage and the timings above are read back from a
-    running DataHub — this page keeps no copy of them, and shows nothing if the
-    catalog is unreachable. The dark block at the end is the one exception and is
-    labelled as such: it is not metadata, it is the registered queries being
-    executed in a READ ONLY transaction, because "these agents are no longer
-    blocked" is a claim only a query can settle.
-  </footer>
+  <div class="limits" id="limits"></div>
 </div>
 
 <script>
@@ -160,119 +120,99 @@ function ago(ms){
   if(s<172800) return Math.round(s/3600)+' h';
   return Math.round(s/86400)+' d';
 }
-function dur(ms){
-  if(ms==null) return '—';
-  const s=ms/1000;
-  return s<90 ? s.toFixed(0)+'s' : (s/60).toFixed(0)+' min';
+// One mark is one agent. Never a rounded count — the DOM has to be assertable
+// against the real number, and the exact figure is printed beside the marks.
+function marks(n, miss){
+  return Array.from({length:n},()=>`<i class="m${miss?' miss':''}"></i>`).join('');
 }
 
-function openRow(r){
-  return `<tr>
-    <td class="num">${r.demand}</td>
-    <td>
-      <div class="want">${esc(r.want)}</div>
-      <div class="meta">open ${ago(r.first_asked_ms)} · ${r.blocked_agents} ${r.blocked_agents===1?'agent':'agents'} blocked</div>
-    </td>
-    <td class="who">${(r.requesters||[]).slice(0,3).map(a=>`<span>${esc(a)}</span>`).join('')}${
-      (r.requesters||[]).length > 3 ? `<span class="more">+${r.requesters.length-3} more</span>` : ''}</td>
-    <td class="meta">${esc((r.urn.split(',')[1]||r.urn))}</td>
-  </tr>`;
-}
-function filledRow(r){
-  const pr = r.pr_url && /^https?:/.test(r.pr_url)
-    ? `<a class="pr" href="${esc(r.pr_url)}" target="_blank" rel="noreferrer">the pull request</a>` : '';
-  return `<tr class="filled" data-want="${esc(r.want)}">
-    <td class="num">${r.demand}</td>
-    <td>
-      <div class="want">${esc(r.want)}</div>
-      <div class="meta">asked ${ago(r.first_asked_ms)} ago · built in ${dur(r.time_to_fill_ms)} · ${r.upstream_total} upstream</div>
-    </td>
-    <td class="fields">${(r.fields||[]).map(esc).join(', ')}</td>
-    <td>${pr}</td>
-  </tr>`;
+function row(r, built){
+  return `<div class="row" data-want="${esc(r.want)}">
+    <div>
+      <h2>${esc(r.want)}</h2>
+      <div class="meta">${built
+        ? `built in ${r.time_to_fill_ms ? Math.round(r.time_to_fill_ms/1000)+'s' : '—'} · ${r.upstream_total} upstream${
+            r.fields && r.fields.length ? ' · ' + r.fields.map(esc).join(', ') : ''}`
+        : `open ${ago(r.first_asked_ms)} · ${r.blocked_agents} still blocked`}</div>
+      <div class="meta">${(r.requesters||[]).slice(0,3).map(esc).join(', ')}${
+        (r.requesters||[]).length>3 ? ` and ${r.requesters.length-3} more` : ''}</div>
+      ${built && r.pr_url && /^https?:/.test(r.pr_url)
+        ? `<div class="meta"><a href="${esc(r.pr_url)}" target="_blank" rel="noreferrer">the pull request</a></div>` : ''}
+    </div>
+    <div>
+      <div class="count">${r.demand}</div>
+      <div class="marks">${marks(r.demand, !built)}</div>
+    </div>
+  </div>`;
 }
 
 async function refresh(){
   let d; try { d = await (await fetch('/api/order-book')).json(); } catch(e){ return; }
 
   if (d.catalog && d.catalog !== 'live') {
-    document.getElementById('headline').style.display='none';
+    document.getElementById('lanes').innerHTML = '';
     document.getElementById('body').innerHTML =
-      `<div class="gone"><h3>The catalog is gone, so this is gone.</h3><p>${esc(d.reason||'')}</p></div>`;
+      `<div class="gone"><h2>The catalog is gone, so this is gone.</h2><p class="meta">${esc(d.reason||'')}</p></div>`;
     return;
   }
-  document.getElementById('headline').style.display='';
 
-  const t = d.totals;
-  document.getElementById('headline').innerHTML = `
-    <div class="fig"><b>${t.open_orders}</b><span>tables your agents needed and could not get</span></div>
-    <div class="fig"><b>${t.blocked_agents}</b><span>agents currently blocked on them</span></div>
-    <div class="fig quiet"><b>${t.filled}</b><span>built because the demand was visible</span></div>
-    <div class="fig quiet"><b>${t.requests_unblocked}</b><span>requests unblocked</span></div>`;
+  const t = d.totals, open = d.open || [], built = d.filled || [];
+  const capped = Math.min(t.unmet_requests, 300);
 
-  const open = d.open || [], filled = d.filled || [];
-  // A backlog is read from the top. Showing all forty turns the page into a
-  // wall nobody scrolls and no screenshot survives; the totals above still
-  // carry the full number, and the tail is counted rather than hidden.
-  const SHOWN = 12;
-  const shown = open.slice(0, SHOWN), hidden = open.length - shown.length;
-  document.getElementById('body').innerHTML = `
-    <h2>Unfilled — ranked by how many agents are waiting</h2>
-    ${shown.length ? `<table>
-      <colgroup><col class="c-demand"><col class="c-want"><col class="c-who"><col class="c-rest"></colgroup>
-      <thead><tr><th>Demand</th><th>What they wanted</th><th>Who asked</th><th>Catalog entry</th></tr></thead>
-      <tbody>${shown.map(openRow).join('')}</tbody></table>
-      ${hidden > 0 ? `<div class="tail">and ${hidden} more, asked for by ${
-        open.slice(SHOWN).reduce((n,r)=>n+r.demand,0)} agents between them — the long tail
-        is most of the backlog, which is the point.</div>` : ''}`
-      : `<div class="empty">Nothing outstanding. Every table an agent has asked for exists.</div>`}
-    <h2>Filled</h2>
-    ${filled.length ? `<table>
-      <colgroup><col class="c-demand"><col class="c-want"><col class="c-who"><col class="c-rest"></colgroup>
-      <thead><tr><th>Demand</th><th>What was built</th><th>Schema delivered</th><th>Evidence</th></tr></thead>
-      <tbody>${filled.map(filledRow).join('')}</tbody></table>`
-      : `<div class="empty">Nothing has been built yet.</div>`}
-    <div id="unblocked"></div>`;
+  // Two lanes, one shared scale, same mark width. The built lane is nearly
+  // empty and that is the argument — it does not get padded.
+  document.getElementById('lanes').innerHTML = `
+    <div class="lane">
+      <div class="head"><span class="label">Wanted, not built</span><span class="n">${t.unmet_requests}</span></div>
+      <div class="marks">${marks(capped, true)}</div>
+      ${capped < t.unmet_requests ? `<p class="meta">first ${capped} of ${t.unmet_requests} drawn</p>` : ''}
+    </div>
+    <div class="lane ${t.requests_unblocked ? '' : 'empty'}">
+      <div class="head"><span class="label">Wanted, and built</span><span class="n">${t.requests_unblocked}</span></div>
+      <div class="marks">${marks(t.requests_unblocked, false)}</div>
+    </div>
+    <p class="meta">${t.open_orders} tables, ${t.blocked_agents} agents waiting. ${t.filled} built.</p>`;
 
-  // The ending: the agents that could not run, running. Fetched separately
-  // because unlike everything else on this page it is not a read-back — the
-  // server proves it by executing the queries.
-  if (filled.length) showUnblocked(filled[0].want);
+  document.getElementById('body').innerHTML =
+    `<h3 class="sec">Unfilled — ranked by how many agents are waiting</h3>
+     ${open.slice(0,10).map(r=>row(r,false)).join('')}
+     ${open.length>10 ? `<div class="tail">and ${open.length-10} more, wanted by ${
+        open.slice(10).reduce((n,r)=>n+r.demand,0)} agents between them. The long tail is most of the backlog.</div>` : ''}
+     <h3 class="sec">Built because the demand was visible</h3>
+     ${built.length ? built.map(r=>row(r,true)).join('') : `<div class="tail">Nothing built yet.</div>`}
+     <div id="ran"></div>`;
+
+  if (built.length) showRan(built[0].want);
 }
 
-async function showUnblocked(want) {
-  let d;
-  try { d = await (await fetch('/api/unblocked?want=' + encodeURIComponent(want))).json(); }
-  catch (e) { return; }
-  const el = document.getElementById('unblocked');
-  if (!el) return;
-  if (d.status === 'disabled') {
-    el.innerHTML = `<div class="unblocked"><h3>Queries unblocked</h3>
-      <div class="note">${esc(d.reason)}</div></div>`;
-    return;
-  }
+async function showRan(want){
+  let d; try { d = await (await fetch('/api/unblocked?want='+encodeURIComponent(want))).json(); } catch(e){ return; }
+  const el = document.getElementById('ran'); if(!el) return;
+  if (d.status === 'disabled') { el.innerHTML = `<div class="tail">${esc(d.reason)}</div>`; return; }
   if (d.status !== 'verified') return;
-  const rows = (d.queries || []).map(q => {
-    const head = q.columns && q.columns.length
-      ? `<table><tr>${q.columns.map(c => `<th>${esc(c)}</th>`).join('')}</tr>` +
-        (q.rows || []).map(r => `<tr>${r.map(v => `<td>${esc(v)}</td>`).join('')}</tr>`).join('') +
-        `</table>` : '';
-    return `<div class="q">
-      <span class="agent">${esc(q.agent_id)}</span>
-      <span class="sql">${esc(q.sql)}</span>
-      <span class="verdict ${q.status === 'runs' ? '' : 'blocked'}">${
-        q.status === 'runs' ? `RUNS — ${(q.rows || []).length} rows` : 'STILL BLOCKED — ' + esc(q.error || '')
-      }</span>
-      ${head}
-    </div>`;
-  }).join('');
-  el.innerHTML = `<div class="unblocked">
-    <h3>${d.runs} of ${d.total} queries that could not run, now run — ${esc(want)}</h3>
-    ${rows}
-    <div class="note">None of these agents asked again. Verified by ${esc(d.verified_by)}.</div>
-  </div>`;
+  el.innerHTML = `<h3 class="sec">${d.runs} of ${d.total} queries that could not run, now run</h3>
+    ${d.queries.map(q=>`
+      <div class="q">
+        <span class="label">${esc(q.agent_id)}</span>
+        <span class="sql">${esc(q.sql)}</span>
+        ${q.status==='runs'
+          ? `<table><tr>${(q.columns||[]).map(c=>`<th>${esc(c)}</th>`).join('')}</tr>${
+              (q.rows||[]).map(r=>`<tr>${r.map(v=>`<td>${esc(v)}</td>`).join('')}</tr>`).join('')}</table>`
+          : `<span class="meta">still blocked — ${esc(q.error||'')}</span>`}
+      </div>`).join('')}
+    <p class="meta">None of these agents asked again. Verified by ${esc(d.verified_by)}.</p>`;
 }
-refresh(); setInterval(refresh, 2000);
+
+document.getElementById('limits').innerHTML =
+  `<p class="label">What this page cannot see</p>
+   <p>Requester identities and warehouse rows are disclosed demo traffic; the misses behind
+   them are genuine Postgres <em>relation does not exist</em> errors read from the server's
+   own log. Demand counts independent requesters, so a dashboard refreshing every ten
+   minutes is one agent, not a hundred and forty-four. Everything above is read live from
+   DataHub — except the queries at the end, which are executed, because that claim cannot
+   be settled by metadata.</p>`;
+
+refresh(); setInterval(refresh, 3000);
 </script>
 </body>
 </html>
