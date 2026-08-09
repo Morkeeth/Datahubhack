@@ -5,7 +5,7 @@
 
 - **Last updated:** 2026-08-09 ~20:15 UTC by Cursor Lane A
 - **Host:** `cursor`
-- **Phase:** Lane A wrap — design comps filed; UI pick deferred (Oscar has another idea); submission audit running
+- **Phase:** Lane A wrapped — design deferred; see `docs/collab/SUBMISSION-AUDIT.md` (multi-model)
 - **Worker branch:** `cursor/datahub-hack-setup-4c9d`
 
 ## This turn
@@ -34,6 +34,11 @@ Clone: `git clone` → `/tmp/nullspace-stranger` from `cursor/datahub-hack-setup
 Comps in `docs/design/board-options-v2.html` + screenshots in `docs/design/options/`.
 Oscar has a separate design idea; **do not merge a board restyle from these comps** until that lands.
 `board.html` stays Darkroom (M1).
+
+## Submission audit
+
+Full multi-model report: **`docs/collab/SUBMISSION-AUDIT.md`**  
+Consensus: **SHIP WITH GAPS** — engine real; recording risks are board pollution, `file://` PR, dbt Fusion→CTAS, walk-the-book not in `demo.sh`.
 
 ## Still open (submission blockers)
 
