@@ -150,7 +150,9 @@ class DataHubClient:
     def solid_witness(self, urn: str) -> dict[str, Any]:
         """Return exactly what GMS currently stores for the solid-asset claims."""
         from datahub.metadata.schema_classes import (
+            AssertionInfoClass,
             InstitutionalMemoryClass,
+            QueryPropertiesClass,
             StructuredPropertiesClass,
         )
 
@@ -161,6 +163,8 @@ class DataHubClient:
         ownership = self.graph.get_aspect(urn, OwnershipClass)
         structured = self.graph.get_aspect(urn, StructuredPropertiesClass)
         memory = self.graph.get_aspect(urn, InstitutionalMemoryClass)
+
+        custom = dict(props.customProperties or {}) if props else {}
 
         fields = None
         if schema is not None:
@@ -205,9 +209,50 @@ class DataHubClient:
                 for el in memory.elements
             ]
 
+        assertion = None
+        assertion_urn = custom.get("nullspace.assertion_urn") or ""
+        if assertion_urn:
+            info = self.graph.get_aspect(assertion_urn, AssertionInfoClass)
+            if info is not None:
+                schema_fields = []
+                if info.schemaAssertion and info.schemaAssertion.schema:
+                    schema_fields = [
+                        f.fieldPath for f in info.schemaAssertion.schema.fields
+                    ]
+                assertion = {
+                    "urn": assertion_urn,
+                    "type": str(info.type),
+                    "description": info.description,
+                    "compatibility": (
+                        str(info.schemaAssertion.compatibility)
+                        if info.schemaAssertion
+                        else None
+                    ),
+                    "fields": schema_fields,
+                }
+
+        queries: list[dict[str, Any]] = []
+        raw_query_urns = custom.get("nullspace.query_urns") or ""
+        for qurn in [u.strip() for u in raw_query_urns.split(",") if u.strip()]:
+            qprops = self.graph.get_aspect(qurn, QueryPropertiesClass)
+            if qprops is None:
+                queries.append({"urn": qurn, "statement": None})
+                continue
+            statement = None
+            if qprops.statement is not None:
+                statement = qprops.statement.value
+            queries.append(
+                {
+                    "urn": qurn,
+                    "name": qprops.name,
+                    "statement": statement,
+                    "description": qprops.description,
+                }
+            )
+
         return {
             "urn": urn,
-            "properties": dict(props.customProperties or {}) if props else None,
+            "properties": custom if props else None,
             "tags": [
                 tag.tag for tag in (tags_aspect.tags if tags_aspect is not None else [])
             ],
@@ -216,6 +261,8 @@ class DataHubClient:
             "ownership": {"owners": owners, "count": len(owners)},
             "structuredProperties": structured_props,
             "institutionalMemory": links,
+            "assertion": assertion,
+            "queries": queries,
         }
 
     def wait_for_indexed_upstreams(

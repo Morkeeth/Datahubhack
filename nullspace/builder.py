@@ -686,12 +686,26 @@ def solidify_after_merge(
             queries=ns.contracts_for(want),
             decision_reason="finalize after merge: compile from catalog contracts",
         )
-    return ns.solidify(
+    solid = ns.solidify(
         want,
         schema_fields=plan.fields,
         upstream_urns=plan.all_upstreams(),
         schema_source=plan.schema_source,
     )
+    # Refresh the catalog receipt so merge→solid carries assertion witness,
+    # not a stale claimed-era snapshot.
+    _write_review_receipt(
+        want=want,
+        reason=plan.decision_reason,
+        plan=plan,
+        result={
+            "status": "solidified",
+            "urn": solid.urn,
+            "pr_url": solid.pr_url,
+            "state": solid.state,
+        },
+    )
+    return solid
 
 
 def build_and_solidify(ns: Nullspace, want: str, *, builder_id: str = "builder-1") -> Ghost:
@@ -869,6 +883,8 @@ def _write_review_receipt(
                     "ownership": witness.get("ownership"),
                     "tags": witness.get("tags"),
                     "assertion_urn": properties.get("nullspace.assertion_urn"),
+                    "assertion": witness.get("assertion"),
+                    "queries": witness.get("queries"),
                 },
                 "honest_boundary": (
                     "file:// is a local change reference, not a pull request"
@@ -1001,12 +1017,15 @@ def review_receipt(
         "ownership": returned_now.get("ownership"),
         "tags": returned_now.get("tags"),
         "assertion_urn": current_properties.get("nullspace.assertion_urn"),
+        "assertion": returned_now.get("assertion"),
+        "queries": returned_now.get("queries"),
     }
-    # Older receipts omit assertion_urn — compare without it when absent.
+    # Older receipts omit newer witness keys — compare without them when absent.
     recorded_cmp = dict(recorded)
     current_cmp = dict(current)
-    if "assertion_urn" not in recorded:
-        current_cmp.pop("assertion_urn", None)
+    for key in ("assertion_urn", "assertion", "queries"):
+        if key not in recorded:
+            current_cmp.pop(key, None)
     return {
         "receipt": source,
         "want": receipt["want"],
@@ -1017,6 +1036,7 @@ def review_receipt(
         "generated_sql": receipt.get("generated_sql"),
         "honest_boundary": receipt.get("honest_boundary"),
         "assertion_urn": current_properties.get("nullspace.assertion_urn"),
+        "assertion": returned_now.get("assertion"),
     }
 
 

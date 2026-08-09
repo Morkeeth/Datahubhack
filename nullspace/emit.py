@@ -483,6 +483,30 @@ def _verify_solid_witness(ghost: Ghost, witness: dict[str, Any]) -> None:
         failures.append(
             f"tags returned {witness.get('tags', [])}, expected {expected_tag!r}"
         )
+    props = witness.get("properties") or {}
+    assertion_urn = props.get("nullspace.assertion_urn")
+    assertion = witness.get("assertion")
+    if not assertion_urn:
+        failures.append("missing nullspace.assertion_urn on solid dataset properties")
+    elif not assertion or assertion.get("urn") != assertion_urn:
+        failures.append(
+            f"assertion witness missing or mismatched: returned {assertion!r}, "
+            f"expected urn {assertion_urn!r}"
+        )
+    elif str(assertion.get("type") or "") not in {
+        "DATA_SCHEMA",
+        "AssertionType.DATA_SCHEMA",
+    } and "DATA_SCHEMA" not in str(assertion.get("type") or ""):
+        failures.append(
+            f"assertion type returned {assertion.get('type')!r}, expected DATA_SCHEMA"
+        )
+    else:
+        asserted_fields = set(assertion.get("fields") or [])
+        if not expected_fields.issubset(asserted_fields):
+            failures.append(
+                f"assertion fields returned {sorted(asserted_fields)}, "
+                f"expected {sorted(expected_fields)}"
+            )
     if failures:
         raise RuntimeError(
             "DataHub solid read-after-write failed: "

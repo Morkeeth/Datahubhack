@@ -28,25 +28,15 @@ from fastapi import FastAPI, Header, HTTPException, Request
 from fastapi.responses import JSONResponse
 
 from nullspace.builder import solidify_after_merge
-from nullspace.client import DataHubClient
-from nullspace.config import settings
+from nullspace.cli import _ns
 from nullspace.ghosts import Nullspace
-from nullspace.persist import FileGhostStore
 
 app = FastAPI(title="Nullspace finalize webhook", version="1.0.0")
 
 
-def _ns() -> Nullspace:
-    cfg = settings()
-    dh = DataHubClient(cfg)
-    ns = Nullspace(
-        FileGhostStore(),
-        demand_threshold=cfg.demand_threshold,
-        dh=dh if dh.healthy() else None,
-    )
-    if ns.dh is not None:
-        ns.hydrate(replace=False)
-    return ns
+def _webhook_ns() -> Nullspace:
+    """Same store policy as CLI (memory / file cache); catalog is SoT."""
+    return _ns(require_catalog=True, hydrate=True)
 
 
 def _verify(secret: str, body: bytes, signature: str | None) -> None:
@@ -83,7 +73,7 @@ async def github_pull_request(
         )
 
     pr_url = pr.get("html_url") or ""
-    ns = _ns()
+    ns = _webhook_ns()
     if ns.dh is None:
         raise HTTPException(status_code=503, detail="DataHub unreachable")
 

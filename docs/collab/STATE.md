@@ -3,24 +3,22 @@
 > Every witness row names the **host** it was witnessed on and the command that
 > printed it. Night-run receipts from another host are not reused as truth here.
 
-- **Last updated:** 2026-08-09 ~13:00 UTC by Cursor Lane A
+- **Last updated:** 2026-08-09 ~14:30 UTC by Cursor Lane A
 - **Host:** `cursor`
-- **Phase:** Build day — receipts + schema Assertions on the URN; video tomorrow
+- **Phase:** Build day — witness parity + soft-merge ingest; video tomorrow
 - **Worker branch:** `cursor/datahub-hack-setup-4c9d`
 
 ## Today (video tomorrow)
 
 | Slice | Status | Witness |
 |---|---|---|
-| Structured props + Queries + Owners from miss | ✅ | `ambitious first-class lifecycle` |
-| Demand ingestion source parity | ✅ | `datahub ingest` + warehouse-log script |
-| Merge webhook | ✅ | `nullspace.webhook` |
-| Builder plan on ghost URN | ✅ | want `catalog-plan-survives-delete` |
-| `NULLSPACE_STORE=memory` | ✅ | hydrate-only CLI mode |
-| OSS connector sketch | ✅ | `docs/design/oss-nullspace-demand-source.md` |
-| Builder receipt on ghost URN | ✅ | want `catalog-receipt-assert-*`: solidify → wipe receipt file → `load_review_receipt` from GMS |
-| DATA_SCHEMA Assertion on solidify | ✅ | same want: `nullspace.assertion_urn` + AssertionInfo EXACT_MATCH; `--review-want` matches |
-| `demo.sh` video path | ✅ | prints board / review-want / webhook cues |
+| Structured props + Queries + Owners from miss | ✅ | earlier |
+| Demand ingestion + webhook + plans/receipts/Assertions | ✅ | earlier |
+| `solid_witness` assertion + queries | ✅ | want `witness-parity-*`: assertion DATA_SCHEMA fields present |
+| Finalize refreshes catalog receipt | ✅ | `solidify_after_merge` → `_write_review_receipt` |
+| Webhook uses CLI store policy | ✅ | `NULLSPACE_STORE=memory` hydrate-only |
+| Demand ingest soft-merge claimed/solid | ✅ | `merge_demand_custom` unit + live prior solid |
+| README cold `export NULLSPACE_STORE` + `--review-want` | ✅ | docs |
 
 ## Still open (not video)
 
