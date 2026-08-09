@@ -29,14 +29,20 @@ Your identity comes from the MCP `clientInfo` handshake, not a field you type, s
 the demand the board shows really is yours. `bash scripts/serve.sh --public`
 prints a live URL for any instance, including your own.
 
+**This needs a running instance.** <https://nullspace-five.vercel.app> is a frozen
+snapshot of a real catalog — it is there so the numbers are readable at any hour,
+but it serves no MCP endpoint and nothing can be written to it. To have your own
+agent create demand, point it at a live instance: ours while the machine hosting it
+is awake, or your own after one `docker compose up`.
+
 ### What has actually happened, with receipts
 
 | | |
 |---|---|
-| A pull request an agent wrote and opened by itself | [`nullspace-dbt#2`](https://github.com/Morkeeth/nullspace-dbt/pull/2), merged |
+| A pull request an agent wrote and opened by itself | [`nullspace-dbt#5`](https://github.com/Morkeeth/nullspace-dbt/pull/5), merged |
 | Demand-side metadata proposed upstream | [`datahub-project/datahub#19022`](https://github.com/datahub-project/datahub/pull/19022) |
-| Demand harvested with **zero adoption** | 1,205 real Postgres `relation does not exist` errors → 41 wants, ranked |
-| The three blocked queries | run, verified by executing them — `python scripts/agents_return.py --want "monthly recurring revenue by segment"` |
+| Demand harvested with **zero adoption** | 2,405 real Postgres `relation does not exist` errors → 1,253 attributed requests across 41 wants, ranked |
+| The three blocked queries | run, verified by executing them — `python -m nullspace.console unblocked "monthly recurring revenue by segment"` |
 
 Delete DataHub and this does not degrade, it disappears: `./scripts/without-datahub.sh`
 shows three agents failing in three silos with no namespace in which the thing
