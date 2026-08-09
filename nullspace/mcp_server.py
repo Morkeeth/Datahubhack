@@ -84,6 +84,39 @@ def _identify(ctx: Context) -> tuple[str, str]:
     return "unidentified-client", "no clientInfo and no env override"
 
 
+def public_mode() -> bool:
+    """True when this process is reachable by strangers.
+
+    A judge pointing their own agent at us is the whole moonshot, and it means
+    the endpoint is open. `claim_and_build` is the one tool that must never be
+    open: it writes files into a dbt checkout, pushes a branch, and opens a pull
+    request using whatever GitHub credentials the host is logged in with. A
+    demand counter is a safe thing to hand a stranger; somebody else's `gh` auth
+    is not.
+    """
+    return os.getenv("NULLSPACE_PUBLIC", "").lower() in {"1", "true", "yes"}
+
+
+# Cheap per-identity ceiling. Not a security control — the security control is
+# that the dangerous tool is off. This exists so one loop cannot fill the board
+# with noise while a judge is looking at it.
+_CALLS: dict[str, int] = {}
+_CALL_CEILING = int(os.getenv("NULLSPACE_PUBLIC_CALL_CEILING", "40"))
+
+
+def _within_ceiling(agent_id: str) -> tuple[bool, str]:
+    if not public_mode():
+        return True, ""
+    _CALLS[agent_id] = _CALLS.get(agent_id, 0) + 1
+    if _CALLS[agent_id] > _CALL_CEILING:
+        return False, (
+            f"{agent_id} has made {_CALLS[agent_id]} calls to this public demo "
+            f"instance; the ceiling is {_CALL_CEILING}. Clone the repo and run "
+            "your own — it is one `docker compose up`."
+        )
+    return True, ""
+
+
 def _ns() -> Nullspace:
     cfg = settings()
     dh = DataHubClient(cfg)
@@ -111,6 +144,17 @@ def _live() -> DataHubClient | None:
 )
 def find_dataset(want: str, ctx: Context) -> dict[str, Any]:
     agent_id, how = _identify(ctx)
+    ok, why = _within_ceiling(agent_id)
+    if not ok:
+        return {"status": "refused", "reason": why, "agent_id": agent_id, "identified_by": how}
+    if len(want) > 120:
+        return {
+            "status": "refused",
+            "reason": f"want is {len(want)} characters; the ceiling is 120. "
+            "A ghost is a table somebody meant to query, not a paragraph.",
+            "agent_id": agent_id,
+            "identified_by": how,
+        }
     ns = _ns()
     live = _live()
 
@@ -163,6 +207,23 @@ def open_demand() -> dict[str, Any]:
 )
 def claim_and_build(want: str, ctx: Context) -> dict[str, Any]:
     builder_id, how = _identify(ctx)
+    if public_mode():
+        # Stated, not silent — non-negotiable #3. A judge who calls this should
+        # learn exactly why it declined and how to see it work for real.
+        return {
+            "status": "refused",
+            "reason": (
+                "this is a public demo instance and building is disabled on it: "
+                "claiming a ghost writes a dbt model, pushes a branch and opens a "
+                "real pull request with the host's GitHub credentials. Demand is "
+                "open to everyone; spending someone else's write access is not. "
+                "Run `docker compose up` on your own machine and the same call "
+                "goes all the way through to a pull request."
+            ),
+            "builder_id": builder_id,
+            "identified_by": how,
+            "public_instance": True,
+        }
     ns = _ns()
 
     ghost = ns.store.get(want)
@@ -314,7 +375,22 @@ def main() -> None:
         return
     host = os.getenv("NULLSPACE_MCP_HOST", "127.0.0.1")
     port = int(os.getenv("NULLSPACE_MCP_PORT", "8788"))
-    server.run(transport=transport, host=host, port=port)
+
+    # The SDK refuses a Host header it does not recognise — DNS-rebinding
+    # protection, and it is right to. Behind a tunnel the browser-visible host
+    # is the tunnel's, not ours, so it must be named explicitly. We name the
+    # hosts we are actually served under; we do not turn the check off.
+    from mcp.server.transport_security import TransportSecuritySettings
+
+    extra = [h.strip() for h in os.getenv("NULLSPACE_ALLOWED_HOSTS", "").split(",") if h.strip()]
+    allowed_hosts = [f"{host}:{port}", f"localhost:{port}", f"127.0.0.1:{port}", *extra]
+    allowed_origins = [f"https://{h}" for h in extra] + [f"http://{h}" for h in allowed_hosts]
+    security = TransportSecuritySettings(
+        allowed_hosts=allowed_hosts, allowed_origins=allowed_origins
+    )
+    if extra:
+        print(f"nullspace: also serving under {', '.join(extra)}", flush=True)
+    server.run(transport=transport, host=host, port=port, transport_security=security)
 
 
 if __name__ == "__main__":
