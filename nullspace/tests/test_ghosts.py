@@ -7,7 +7,9 @@ def test_three_misses_reach_threshold_and_solidify():
     want = "trial-to-paid conversion by cohort"
 
     for agent in ("a", "b", "c"):
-        receipt = consumer_search(ns, want=want, agent_id=agent, dh=None)
+        receipt = consumer_search(
+            ns, want=want, agent_id=agent, dh=None, offline=True
+        )
         assert receipt["status"] == "miss_ghosted"
 
     ghost = store.get(want)
@@ -31,8 +33,8 @@ def test_three_misses_reach_threshold_and_solidify():
 def test_same_agent_does_not_double_count():
     ns = Nullspace(MemoryGhostStore(), demand_threshold=3)
     want = "monthly active users"
-    consumer_search(ns, want=want, agent_id="a", dh=None)
-    consumer_search(ns, want=want, agent_id="a", dh=None)
+    consumer_search(ns, want=want, agent_id="a", dh=None, offline=True)
+    consumer_search(ns, want=want, agent_id="a", dh=None, offline=True)
     g = ns.store.get(want)
     assert g is not None
     assert g.demand == 1
@@ -49,9 +51,37 @@ def test_urn_stable_across_consumers():
 def test_reset_clears_local_store():
     store = MemoryGhostStore()
     ns = Nullspace(store, demand_threshold=3)
-    consumer_search(ns, want="reset me", agent_id="a", dh=None)
+    consumer_search(ns, want="reset me", agent_id="a", dh=None, offline=True)
     assert store.list_ghosts()
     result = ns.reset()
     assert result["status"] == "reset"
     assert result["store_count"] == 0
     assert store.list_ghosts() == []
+
+
+def test_unreachable_catalog_refuses_instead_of_local_ghost():
+    class DeadClient:
+        def healthy(self) -> bool:
+            return False
+
+        def search_datasets(self, want: str):
+            raise AssertionError("search must not run when unhealthy")
+
+    ns = Nullspace(MemoryGhostStore(), demand_threshold=3)
+    receipt = consumer_search(
+        ns, want="anything", agent_id="solo", dh=DeadClient()  # type: ignore[arg-type]
+    )
+    assert receipt["status"] == "refused"
+    assert "shared namespace" in receipt["reason"]
+    assert ns.store.list_ghosts() == []
+
+
+def test_missing_client_refuses_unless_offline():
+    ns = Nullspace(MemoryGhostStore(), demand_threshold=3)
+    live_miss = consumer_search(ns, want="no catalog", agent_id="solo", dh=None)
+    assert live_miss["status"] == "refused"
+    assert ns.store.list_ghosts() == []
+    offline = consumer_search(
+        ns, want="no catalog", agent_id="solo", dh=None, offline=True
+    )
+    assert offline["status"] == "miss_ghosted"

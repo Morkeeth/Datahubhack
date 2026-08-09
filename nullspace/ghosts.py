@@ -413,10 +413,42 @@ def consumer_search(
     want: str,
     agent_id: str,
     dh: DataHubClient | None = None,
+    offline: bool = False,
 ) -> dict[str, Any]:
-    """Search DataHub; on miss, create or increment demand on one ghost."""
+    """Search DataHub; on miss, create or increment demand on one ghost.
+
+    ``dh=None`` without ``offline=True`` is a refusal (Law 2): callers that
+    dropped the catalog because GMS was down must not silently ghost into a
+    private JSON file. Pass ``offline=True`` only for unit tests that exercise
+    the in-memory store without a catalog.
+    """
     hits: list[dict[str, Any]] = []
-    if dh is not None:
+    if dh is None:
+        if not offline:
+            return {
+                "status": "refused",
+                "agent_id": agent_id,
+                "want": want,
+                "reason": (
+                    "DataHub GMS unreachable; there is no shared namespace in which "
+                    "this demand can be named or seen by other agents. "
+                    "shortfall is 1 healthy catalog"
+                ),
+                "agent_urn": corpuser_urn(agent_id),
+            }
+    else:
+        if not dh.healthy():
+            return {
+                "status": "refused",
+                "agent_id": agent_id,
+                "want": want,
+                "reason": (
+                    "DataHub GMS unreachable; there is no shared namespace in which "
+                    "this demand can be named or seen by other agents. "
+                    "shortfall is 1 healthy catalog"
+                ),
+                "agent_urn": corpuser_urn(agent_id),
+            }
         hits = dh.search_datasets(want)
         real_hits = []
         want_key = _key(want)

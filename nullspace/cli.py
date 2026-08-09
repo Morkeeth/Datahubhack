@@ -11,28 +11,62 @@ from nullspace.ghosts import Nullspace, consumer_search
 from nullspace.persist import FileGhostStore
 
 
-def _ns() -> Nullspace:
+def _ns(*, require_catalog: bool = True) -> Nullspace:
     cfg = settings()
     store = FileGhostStore()
     dh = DataHubClient(cfg)
-    return Nullspace(store, demand_threshold=cfg.demand_threshold, dh=dh if dh.healthy() else None)
+    if require_catalog and not dh.healthy():
+        raise SystemExit(
+            json.dumps(
+                {
+                    "status": "refused",
+                    "reason": (
+                        "DataHub GMS unreachable at "
+                        f"{cfg.gms_url}; Nullspace has no shared namespace without "
+                        "the catalog. shortfall is 1 healthy GMS"
+                    ),
+                }
+            )
+        )
+    return Nullspace(
+        store,
+        demand_threshold=cfg.demand_threshold,
+        dh=dh if dh.healthy() else None,
+    )
 
 
 def cmd_ask(args: argparse.Namespace) -> int:
-    ns = _ns()
     dh = DataHubClient()
+    if not dh.healthy():
+        print(
+            json.dumps(
+                {
+                    "status": "refused",
+                    "agent_id": args.agent,
+                    "want": args.want,
+                    "reason": (
+                        "DataHub GMS unreachable at "
+                        f"{settings().gms_url}; Nullspace has no shared namespace "
+                        "without the catalog. shortfall is 1 healthy GMS"
+                    ),
+                },
+                indent=2,
+            )
+        )
+        return 1
+    ns = _ns(require_catalog=True)
     receipt = consumer_search(
         ns,
         want=args.want,
         agent_id=args.agent,
-        dh=dh if dh.healthy() else None,
+        dh=dh,
     )
     print(json.dumps(receipt, indent=2))
-    return 0
+    return 0 if receipt.get("status") != "refused" else 1
 
 
 def cmd_build(args: argparse.Namespace) -> int:
-    ns = _ns()
+    ns = _ns(require_catalog=True)
     ghost = build_and_solidify(ns, args.want, builder_id=args.agent)
     print(json.dumps(ghost.to_public(), indent=2))
     return 0
@@ -67,20 +101,16 @@ def cmd_board_dump(_: argparse.Namespace) -> int:
 
 def cmd_demo(_: argparse.Namespace) -> int:
     """Three consumers → demand=3 → builder solidifies. Prints receipts."""
-    cfg = settings()
-    want = cfg.demo_asset_name.replace("_", " ")
-    # nicer phrase for the board
     want = "trial-to-paid conversion by cohort"
-    ns = _ns()
+    ns = _ns(require_catalog=True)
     dh = DataHubClient()
-    live = dh if dh.healthy() else None
-    if live is None:
-        print("WARN: DataHub GMS not reachable — running memory/file loop only", file=sys.stderr)
 
     for agent in ("consumer-a", "consumer-b", "consumer-c"):
-        receipt = consumer_search(ns, want=want, agent_id=agent, dh=live)
+        receipt = consumer_search(ns, want=want, agent_id=agent, dh=dh)
         print(json.dumps(receipt, indent=2))
         print("---")
+        if receipt.get("status") == "refused":
+            return 1
 
     ready = ns.ready_to_build()
     if not ready:

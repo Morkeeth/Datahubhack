@@ -123,6 +123,18 @@ python3 -m nullspace.cli reset
 
 After reset, DataHub search for platform `nullspace` returns **0** assets.
 
+## Subtraction proof (Law 2)
+
+With GMS unreachable, three isolated agents each refuse — there is no shared
+namespace in which their demand can be named:
+
+```bash
+./scripts/without-datahub.sh
+```
+
+Deleting DataHub does not degrade Nullspace into a local JSON loop; it deletes
+the product.
+
 ## License
 
 Apache-2.0 — see [LICENSE](LICENSE).
