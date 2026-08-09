@@ -114,3 +114,11 @@ upstream polish.
 `gh` might fall back to `file://`.
 
 Full plan: `docs/archive/collab/reviews/final-20h-plan.md`
+
+### Shipped in the post-submit pass (Cursor)
+
+- MCP `find_dataset` uses **one** DataHub client + **flushes** ghost emits before return (board no longer waits on process exit)
+- `open_demand` / `claim_and_build` hydrate from catalog
+- `dbt-core>=1.8,<2` pinned in `requirements.txt` + `install-deps.sh` (no Fusion surprise)
+- Order book shows PR link on claimed rows
+- `scripts/preflight-demo.sh` + `docs/submission/x-clip.md`
