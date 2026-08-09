@@ -3,9 +3,9 @@
 > Every witness row names the **host** it was witnessed on and the command that
 > printed it. Night-run receipts from another host are not reused as truth here.
 
-- **Last updated:** 2026-08-09 ~23:05 UTC by Cursor Lane A
+- **Last updated:** 2026-08-09 ~23:35 UTC by Cursor Lane A
 - **Host:** `cursor`
-- **Phase:** Handed to Claude — harden DataHub RFC #19022 (see HANDOFF 008)
+- **Phase:** Submitted — Cursor retro filed (`hack.md` + reviews/retro-cursor-…); Claude appends Lane B
 - **Worker branch:** `cursor/datahub-hack-setup-4c9d`
 
 ## This turn

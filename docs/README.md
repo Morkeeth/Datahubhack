@@ -10,6 +10,7 @@ Nullspace makes DataHub record the tables your agents asked for and could not ge
 | Every link, every number, and how each one was checked | [`submission/SUBMISSION.md`](submission/SUBMISSION.md) |
 | Why a ghost is a Dataset URN, and the case against it | [`design/why-a-dataset-urn.md`](design/why-a-dataset-urn.md) |
 | The upstream RFC this project argues for | [datahub#19022](https://github.com/datahub-project/datahub/pull/19022) |
+| Weekend retro (Cursor done; Claude appends) | [`../hack.md`](../hack.md) |
 
 ## Use of DataHub
 
