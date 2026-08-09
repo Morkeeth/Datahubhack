@@ -3,9 +3,9 @@
 > Every witness row names the **host** it was witnessed on and the command that
 > printed it. Night-run receipts from another host are not reused as truth here.
 
-- **Last updated:** 2026-08-09 ~20:15 UTC by Cursor Lane A
+- **Last updated:** 2026-08-09 ~23:05 UTC by Cursor Lane A
 - **Host:** `cursor`
-- **Phase:** Lane A wrapped — design deferred; see `docs/collab/SUBMISSION-AUDIT.md` (multi-model)
+- **Phase:** Handed to Claude — harden DataHub RFC #19022 (see HANDOFF 008)
 - **Worker branch:** `cursor/datahub-hack-setup-4c9d`
 
 ## This turn
@@ -42,11 +42,11 @@ Consensus: **SHIP WITH GAPS** — engine real; recording risks are board polluti
 
 ## Still open (submission blockers)
 
-1. Oscar: App → nullspace-dbt / hosted webhook (real `https://` PR)
-2. Live watcher money shot: skip churn/NRR → claim `pipeline coverage by rep` → solid + `agents_return`
-3. Lane B: video / submission package
-4. Product ruling: `install-deps` + `dbt-postgres` + profile (stranger solid must be a real table — Lane B also touched this)
+1. **Lane B NOW:** harden https://github.com/datahub-project/datahub/pull/19022 — `handoffs/008-to-claude-harden-rfc-19022.md` + kit `docs/oss/datahub-rfc-19022/`
+2. Oscar recording / video upload
+3. Product ruling leftovers only if stranger path still broken on laptop
 
 ## Handback — Lane B
 
-Board/UI restyle ownership + video. `mcp_server.py` stale warning if still present.
+**HANDOFF 008** — apply the RFC polish kit, retitle PR, green CI, post reviewer-response.
+Do **not** open a connector PR. Cursor cannot push `Morkeeth/datahub`.
