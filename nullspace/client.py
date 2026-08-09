@@ -372,8 +372,69 @@ class DataHubClient:
         return urns
 
     def hard_delete_urn(self, urn: str) -> None:
-        """Hard-delete one entity so a reset demo starts hollow."""
+        """Hard-delete one nullspace dataset. Refuses any other platform."""
+        if "urn:li:dataPlatform:nullspace," not in urn:
+            raise ValueError(
+                "reset refused: refusing to delete non-nullspace URN "
+                f"{urn!r}; only urn:li:dataPlatform:nullspace datasets may be wiped"
+            )
         self.graph.delete_entity(urn, hard=True)
+
+    def list_warehouse_datasets(self) -> list[dict[str, Any]]:
+        """Return non-nullspace datasets with schema fields for the SQL planner."""
+        query = """
+        query {
+          scrollAcrossEntities(input: {
+            types: [DATASET],
+            query: "*",
+            count: 500
+          }) {
+            searchResults {
+              entity {
+                urn
+                ... on Dataset {
+                  platform { name }
+                  schemaMetadata {
+                    fields { fieldPath nativeDataType nullable }
+                  }
+                }
+              }
+            }
+          }
+        }
+        """
+        response = httpx.post(
+            f"{self.gms}/api/graphql",
+            headers=self._headers,
+            json={"query": query},
+            timeout=30.0,
+        )
+        response.raise_for_status()
+        block = (
+            (response.json().get("data") or {}).get("scrollAcrossEntities") or {}
+        )
+        out: list[dict[str, Any]] = []
+        for result in block.get("searchResults") or []:
+            entity = result.get("entity") or {}
+            urn = entity.get("urn", "")
+            if ":nullspace," in urn:
+                continue
+            fields = (entity.get("schemaMetadata") or {}).get("fields") or []
+            out.append(
+                {
+                    "urn": urn,
+                    "platform": (entity.get("platform") or {}).get("name"),
+                    "fields": [
+                        {
+                            "name": field["fieldPath"],
+                            "native_type": field.get("nativeDataType") or "VARCHAR",
+                            "nullable": field.get("nullable", True),
+                        }
+                        for field in fields
+                    ],
+                }
+            )
+        return out
 
     def wait_for_nullspace_empty(self, *, timeout_seconds: float = 30.0) -> bool:
         deadline = time.monotonic() + timeout_seconds
