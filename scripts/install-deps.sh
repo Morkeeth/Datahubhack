@@ -71,7 +71,7 @@ nullspace:
       user: agent
       password: agent
       dbname: warehouse
-      schema: nullspace
+      schema: ecommerce
       threads: 4
 PROFILE
 else
