@@ -173,7 +173,17 @@ def emit_ghost(
     tag_urn = f"urn:li:tag:{tag}"
     queue: list[MetadataChangeProposalWrapper] = []
 
-    ensure_structured_property_definitions(dh, queue=None if strict else queue)
+    # Never queue these. A structured-property *definition* and the first ghost
+    # that *uses* it cannot travel in the same batch: GMS validates the usage
+    # against the definitions that already exist, so the whole MCP is rejected
+    # with a 422 — "no valid property assignments remain after removing values
+    # for non-existent properties" — and no ghost is created at all. Worse, the
+    # local store had already advanced, so a degraded run looked healthy while
+    # the catalog stayed empty.
+    #
+    # Definitions are cheap, idempotent and read back before use, so they go
+    # synchronously, always, ahead of everything that references them.
+    ensure_structured_property_definitions(dh, queue=None)
 
     if not dh.oneshot_done(tag_urn):
         queue.append(
