@@ -1,0 +1,200 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Nullspace — the order book</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@300;600&display=swap" rel="stylesheet">
+<style>
+  /* Same system as the board (M1 Darkroom, docs/design/design-prompt.md): light
+     narrative, dark data windows, one accent that carries meaning. The board is
+     the mechanism; this page is the argument, so the dark window here is the
+     unmet demand itself — the thing the organisation does not have. */
+  :root {
+    --paper: #fafafa; --negative: #0c0c0e; --hair: #e4e4e7;
+    --muted: #6b6560; --muted-dark: #8a8580; --accent: #0891b2;
+    --safelight: rgba(190, 58, 44, 0.022);
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--paper);
+    background-image: linear-gradient(0deg, var(--safelight), var(--safelight));
+    color: var(--negative);
+    font-family: "IBM Plex Sans", -apple-system, Segoe UI, sans-serif;
+    font-weight: 300; line-height: 1.5; -webkit-font-smoothing: antialiased;
+  }
+  .wrap { max-width: 63rem; margin: 0 auto; padding: 0 1.5rem; }
+  header { padding: 4.5rem 0 0; }
+  h1 { font-size: clamp(2.4rem, 6vw, 3.5rem); font-weight: 600; letter-spacing: -0.04em; margin: 0 0 0.75rem; }
+  .standfirst { font-size: 1.0625rem; color: var(--muted); max-width: 36rem; margin: 0; }
+  nav { margin-top: 1.25rem; font-family: "IBM Plex Mono", monospace; font-size: 0.8125rem; }
+  nav a { color: var(--accent); text-underline-offset: 3px; }
+
+  /* The headline: the number that is the whole product. */
+  .headline {
+    background: var(--negative); color: var(--paper);
+    border-radius: 8px; padding: 2.5rem 2rem; margin: 2.5rem 0 2rem;
+    display: grid; grid-template-columns: repeat(4, 1fr); gap: 2rem;
+    align-items: end;
+  }
+  @media (max-width: 760px) { .headline { grid-template-columns: repeat(2, 1fr); } }
+  .fig b {
+    display: block; font-family: "IBM Plex Mono", monospace; font-weight: 500;
+    font-size: 4rem; line-height: 0.9; color: var(--accent);
+    font-variant-numeric: tabular-nums;
+  }
+  .fig.quiet b { color: var(--paper); font-size: 2.25rem; }
+  .fig span {
+    display: block; margin-top: 0.6rem; max-width: 15rem;
+    font-size: 0.6875rem; font-weight: 600; text-transform: uppercase;
+    letter-spacing: 0.11em; color: var(--muted-dark);
+  }
+
+  h2 {
+    font-size: 0.6875rem; font-weight: 600; text-transform: uppercase;
+    letter-spacing: 0.11em; color: var(--muted);
+    border-top: 1px solid var(--hair); padding-top: 1.25rem; margin: 3rem 0 0;
+  }
+  table { width: 100%; border-collapse: collapse; table-layout: fixed; }
+  col.c-demand { width: 6rem; } col.c-want { width: 34%; }
+  col.c-who { width: 22%; } col.c-rest { width: auto; }
+  thead th {
+    text-align: left; font-size: 0.6875rem; font-weight: 600;
+    text-transform: uppercase; letter-spacing: 0.11em; color: var(--muted);
+    padding: 1.25rem 1rem 0.6rem 0; font-weight: 600;
+  }
+  tbody td {
+    border-top: 1px solid var(--hair); padding: 1.1rem 1rem 1.1rem 0;
+    vertical-align: top; font-size: 0.9375rem;
+  }
+  tbody tr:hover { background: rgba(0,0,0,0.015); }
+  .want { font-size: 1.0625rem; letter-spacing: -0.01em; }
+  .num {
+    font-family: "IBM Plex Mono", monospace; font-weight: 500; font-size: 1.75rem;
+    color: var(--accent); font-variant-numeric: tabular-nums; white-space: nowrap;
+  }
+  .filled .num { color: var(--negative); }
+  .who, .meta {
+    font-family: "IBM Plex Mono", monospace; font-size: 0.75rem; color: var(--muted);
+  }
+  .who span { display: block; overflow-wrap: anywhere; }
+  .meta { overflow-wrap: anywhere; }
+  .fields { color: var(--muted); font-size: 0.8125rem; }
+  a.pr { color: var(--accent); font-family: "IBM Plex Mono", monospace; font-size: 0.75rem; }
+  .empty { color: var(--muted); padding: 2.5rem 0; }
+  .gone { background: var(--negative); color: var(--paper); border-radius: 8px; padding: 3rem 2rem; margin-top: 2.5rem; }
+  .gone h3 { font-size: 1.5rem; font-weight: 300; letter-spacing: -0.03em; margin: 0 0 1rem; }
+  .gone p { color: var(--muted-dark); max-width: 38rem; }
+  footer {
+    border-top: 1px solid var(--hair); margin-top: 3.5rem; padding: 1.5rem 0 4rem;
+    color: var(--muted); font-size: 0.8125rem; max-width: 42rem;
+  }
+  @media (max-width: 640px) {
+    thead { display: none; }
+    tbody td { display: block; padding: 0.35rem 0; border-top: none; }
+    tbody tr { display: block; border-top: 1px solid var(--hair); padding: 1.25rem 0; }
+    .headline { gap: 2rem; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>The order book</h1>
+    <p class="standfirst">
+      What your agents needed this week and could not get. Every row is a table
+      that does not exist, ranked by how many independent agents asked for it.
+    </p>
+    <nav><a href="/">← the demand board</a></nav>
+  </header>
+
+  <div class="headline" id="headline"></div>
+  <div id="body"></div>
+
+  <footer id="foot">
+    Read live from DataHub. The requester identities and the warehouse rows are
+    disclosed demo data; the demand, the schemas, the lineage and the timings are
+    read back from the catalog. Nothing here is computed from a local file.
+  </footer>
+</div>
+
+<script>
+function esc(s){return String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
+function ago(ms){
+  if(!ms) return '—';
+  const s=Math.max(0,(Date.now()-ms)/1000);
+  if(s<90) return Math.round(s)+'s';
+  if(s<5400) return Math.round(s/60)+' min';
+  if(s<172800) return Math.round(s/3600)+' h';
+  return Math.round(s/86400)+' d';
+}
+function dur(ms){
+  if(ms==null) return '—';
+  const s=ms/1000;
+  return s<90 ? s.toFixed(0)+'s' : (s/60).toFixed(0)+' min';
+}
+
+function openRow(r){
+  return `<tr>
+    <td class="num">${r.demand}</td>
+    <td>
+      <div class="want">${esc(r.want)}</div>
+      <div class="meta">open ${ago(r.first_asked_ms)} · ${r.blocked_agents} ${r.blocked_agents===1?'agent':'agents'} blocked</div>
+    </td>
+    <td class="who">${(r.requesters||[]).map(a=>`<span>${esc(a)}</span>`).join('')}</td>
+    <td class="meta">${esc(r.urn)}</td>
+  </tr>`;
+}
+function filledRow(r){
+  const pr = r.pr_url && /^https?:/.test(r.pr_url)
+    ? `<a class="pr" href="${esc(r.pr_url)}" target="_blank" rel="noreferrer">the pull request</a>` : '';
+  return `<tr class="filled">
+    <td class="num">${r.demand}</td>
+    <td>
+      <div class="want">${esc(r.want)}</div>
+      <div class="meta">asked ${ago(r.first_asked_ms)} ago · built in ${dur(r.time_to_fill_ms)} · ${r.upstream_total} upstream</div>
+    </td>
+    <td class="fields">${(r.fields||[]).map(esc).join(', ')}</td>
+    <td>${pr}</td>
+  </tr>`;
+}
+
+async function refresh(){
+  let d; try { d = await (await fetch('/api/order-book')).json(); } catch(e){ return; }
+
+  if (d.catalog && d.catalog !== 'live') {
+    document.getElementById('headline').style.display='none';
+    document.getElementById('body').innerHTML =
+      `<div class="gone"><h3>The catalog is gone, so this is gone.</h3><p>${esc(d.reason||'')}</p></div>`;
+    return;
+  }
+  document.getElementById('headline').style.display='';
+
+  const t = d.totals;
+  document.getElementById('headline').innerHTML = `
+    <div class="fig"><b>${t.open_orders}</b><span>tables your agents needed and could not get</span></div>
+    <div class="fig"><b>${t.blocked_agents}</b><span>agents currently blocked on them</span></div>
+    <div class="fig quiet"><b>${t.filled}</b><span>built because the demand was visible</span></div>
+    <div class="fig quiet"><b>${t.requests_unblocked}</b><span>requests unblocked</span></div>`;
+
+  const open = d.open || [], filled = d.filled || [];
+  document.getElementById('body').innerHTML = `
+    <h2>Unfilled — ranked by how many agents are waiting</h2>
+    ${open.length ? `<table>
+      <colgroup><col class="c-demand"><col class="c-want"><col class="c-who"><col class="c-rest"></colgroup>
+      <thead><tr><th>Demand</th><th>What they wanted</th><th>Who asked</th><th>Catalog entry</th></tr></thead>
+      <tbody>${open.map(openRow).join('')}</tbody></table>`
+      : `<div class="empty">Nothing outstanding. Every table an agent has asked for exists.</div>`}
+    <h2>Filled</h2>
+    ${filled.length ? `<table>
+      <colgroup><col class="c-demand"><col class="c-want"><col class="c-who"><col class="c-rest"></colgroup>
+      <thead><tr><th>Demand</th><th>What was built</th><th>Schema delivered</th><th>Evidence</th></tr></thead>
+      <tbody>${filled.map(filledRow).join('')}</tbody></table>`
+      : `<div class="empty">Nothing has been built yet.</div>`}`;
+}
+refresh(); setInterval(refresh, 2000);
+</script>
+</body>
+</html>

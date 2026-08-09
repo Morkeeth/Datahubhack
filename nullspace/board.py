@@ -184,9 +184,85 @@ def read_catalog() -> dict[str, Any]:
     }
 
 
+def order_book() -> dict[str, Any]:
+    """What this organisation's agents needed and could not get.
+
+    The board is the mechanism; this is the argument. Same source — a search on
+    platform `nullspace` and the aspects hanging off it — read as a roadmap
+    rather than as a feed. Nothing here is computed from anything but the
+    catalog, so if DataHub is unreachable this is unreachable too.
+    """
+    snapshot = read_catalog()
+    if snapshot.get("catalog") != "live":
+        return snapshot
+
+    open_orders: list[dict[str, Any]] = []
+    filled: list[dict[str, Any]] = []
+
+    for g in snapshot["ghosts"]:
+        events = g.get("resolution") or []
+        stamps = [e.get("at_ms") for e in events if e.get("at_ms")]
+        first_ask = min(stamps) if stamps else None
+        solidified = next(
+            (e["at_ms"] for e in events if e.get("event") == "solidify"), None
+        )
+        row = {
+            "want": g["want"],
+            "urn": g["urn"],
+            "demand": g["demand"],
+            "requesters": g["requesters"],
+            "state": g["state"],
+            "first_asked_ms": first_ask,
+            "fields": [f["name"] for f in g["schema_fields"] if f.get("name")],
+            "pr_url": g["pr_url"],
+        }
+        if g["state"] == "solid":
+            row["filled_ms"] = solidified
+            row["time_to_fill_ms"] = (
+                solidified - first_ask if (solidified and first_ask) else None
+            )
+            row["upstream_total"] = g["upstream_total"]
+            filled.append(row)
+        else:
+            # A hollow ghost means every agent that asked is still blocked: the
+            # query each of them meant to run cannot run. That is the cost line.
+            row["blocked_agents"] = len(g["requesters"])
+            open_orders.append(row)
+
+    open_orders.sort(key=lambda r: (-r["demand"], r["first_asked_ms"] or 0))
+    filled.sort(key=lambda r: -(r.get("filled_ms") or 0))
+
+    return {
+        "product": "nullspace",
+        "catalog": "live",
+        "source": snapshot["source"],
+        "open": open_orders,
+        "filled": filled,
+        "totals": {
+            "open_orders": len(open_orders),
+            "blocked_agents": sum(r["blocked_agents"] for r in open_orders),
+            "unmet_requests": sum(r["demand"] for r in open_orders),
+            "filled": len(filled),
+            "requests_unblocked": sum(r["demand"] for r in filled),
+        },
+    }
+
+
 @app.get("/api/board")
 def api_board() -> JSONResponse:
     return JSONResponse(read_catalog())
+
+
+@app.get("/api/order-book")
+def api_order_book() -> JSONResponse:
+    return JSONResponse(order_book())
+
+
+@app.get("/order-book", response_class=HTMLResponse)
+def order_book_page() -> str:
+    return (Path(__file__).parent / "static" / "order-book.html").read_text(
+        encoding="utf-8"
+    )
 
 
 @app.get("/", response_class=HTMLResponse)
