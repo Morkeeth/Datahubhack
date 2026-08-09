@@ -124,6 +124,8 @@ def emit_ghost(dh: DataHubClient, ghost: Ghost) -> dict[str, Any]:
         custom["nullspace.contracts"] = prior["nullspace.contracts"]
     if prior.get("nullspace.query_urns"):
         custom["nullspace.query_urns"] = prior["nullspace.query_urns"]
+    if prior.get("nullspace.builder_plan"):
+        custom["nullspace.builder_plan"] = prior["nullspace.builder_plan"]
 
     props = DatasetPropertiesClass(
         name=ghost.dataset_name,

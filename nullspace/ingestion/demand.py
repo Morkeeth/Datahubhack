@@ -57,7 +57,7 @@ from datahub.metadata.schema_classes import (
 )
 from pydantic import Field
 
-from nullspace import GHOST_TAG, PLATFORM
+from nullspace import GHOST_TAG
 from nullspace.client import now_ms
 from nullspace.urns import corpuser_urn, ghost_dataset_name, ghost_urn
 

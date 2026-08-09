@@ -2,18 +2,27 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 
 from nullspace.builder import build_and_solidify, solidify_after_merge
 from nullspace.client import DataHubClient
 from nullspace.config import settings
-from nullspace.ghosts import Nullspace, consumer_search
+from nullspace.ghosts import MemoryGhostStore, Nullspace, consumer_search
 from nullspace.persist import FileGhostStore
+
+
+def _store():
+    """Local JSON is an optional cache. ``memory`` / empty → hydrate-only."""
+    path = os.getenv("NULLSPACE_STORE", "/tmp/nullspace-ghosts.json").strip()
+    if path.lower() in {"", "memory", ":memory:", "none"}:
+        return MemoryGhostStore()
+    return FileGhostStore()
 
 
 def _ns(*, require_catalog: bool = True, hydrate: bool = True) -> Nullspace:
     cfg = settings()
-    store = FileGhostStore()
+    store = _store()
     dh = DataHubClient(cfg)
     if require_catalog and not dh.healthy():
         raise SystemExit(
@@ -34,7 +43,8 @@ def _ns(*, require_catalog: bool = True, hydrate: bool = True) -> Nullspace:
         dh=dh if dh.healthy() else None,
     )
     if hydrate and ns.dh is not None:
-        ns.hydrate(replace=False)
+        # Catalog is SoT — replace local cache from GMS when using memory store.
+        ns.hydrate(replace=isinstance(store, MemoryGhostStore))
     return ns
 
 
