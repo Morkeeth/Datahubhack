@@ -1,0 +1,143 @@
+{
+  "run_id": "run-1786141407",
+  "treaties": [
+    {
+      "run_id": "run-1786141407",
+      "candidate_id": "customers_customer_id__orders_customer_id",
+      "er_relationship_urn": "urn:li:erModelRelationship:customers_customer_id__orders_customer_id",
+      "source_urn": "urn:li:dataset:(urn:li:dataPlatform:postgres,local-warehouse.warehouse.ecommerce.orders,DEV)",
+      "destination_urn": "urn:li:dataset:(urn:li:dataPlatform:postgres,local-warehouse.warehouse.ecommerce.customers,DEV)",
+      "source_field": "customer_id",
+      "destination_field": "customer_id",
+      "cardinality": "N_ONE",
+      "evidence_query_urns": [
+        "urn:li:query:jointreaty-94754104c287ffa1",
+        "urn:li:query:jointreaty-99a96cba363e2ad7",
+        "urn:li:query:jointreaty-eec13eb9a2152de6"
+      ],
+      "evidence_count": 3,
+      "gates": [
+        {
+          "name": "repeated_evidence",
+          "passed": true,
+          "detail": "3 distinct query URNs (need >= 3)"
+        },
+        {
+          "name": "fields_exist",
+          "passed": true,
+          "detail": "customer_id@customers=True, customer_id@orders=True"
+        },
+        {
+          "name": "type_compatible",
+          "passed": true,
+          "detail": "BIGINT(integer) vs BIGINT(integer)"
+        },
+        {
+          "name": "cardinality_supported",
+          "passed": true,
+          "detail": "orders.customer_id duplicated -> N:1 to customers.customer_id"
+        }
+      ],
+      "read_after_write": {
+        "er_relationship_present": true,
+        "er_relationship_cardinality": "N_ONE",
+        "er_relationship_name": "orders.customer_id -> customers.customer_id",
+        "source_receipt_present": true,
+        "destination_receipt_present": true
+      },
+      "created_at": "2026-08-07T22:23:27.779194+00:00"
+    },
+    {
+      "run_id": "run-1786141407",
+      "candidate_id": "order_items_order_id__orders_order_id",
+      "er_relationship_urn": "urn:li:erModelRelationship:order_items_order_id__orders_order_id",
+      "source_urn": "urn:li:dataset:(urn:li:dataPlatform:postgres,local-warehouse.warehouse.ecommerce.order_items,DEV)",
+      "destination_urn": "urn:li:dataset:(urn:li:dataPlatform:postgres,local-warehouse.warehouse.ecommerce.orders,DEV)",
+      "source_field": "order_id",
+      "destination_field": "order_id",
+      "cardinality": "N_ONE",
+      "evidence_query_urns": [
+        "urn:li:query:jointreaty-2fe47ae754a7ab9e",
+        "urn:li:query:jointreaty-4201aadff27f983b",
+        "urn:li:query:jointreaty-de18f16539014093"
+      ],
+      "evidence_count": 3,
+      "gates": [
+        {
+          "name": "repeated_evidence",
+          "passed": true,
+          "detail": "3 distinct query URNs (need >= 3)"
+        },
+        {
+          "name": "fields_exist",
+          "passed": true,
+          "detail": "order_id@order_items=True, order_id@orders=True"
+        },
+        {
+          "name": "type_compatible",
+          "passed": true,
+          "detail": "BIGINT(integer) vs BIGINT(integer)"
+        },
+        {
+          "name": "cardinality_supported",
+          "passed": true,
+          "detail": "order_items.order_id duplicated -> N:1 to orders.order_id"
+        }
+      ],
+      "read_after_write": {
+        "er_relationship_present": true,
+        "er_relationship_cardinality": "N_ONE",
+        "er_relationship_name": "order_items.order_id -> orders.order_id",
+        "source_receipt_present": true,
+        "destination_receipt_present": true
+      },
+      "created_at": "2026-08-07T22:23:27.914180+00:00"
+    },
+    {
+      "run_id": "run-1786141407",
+      "candidate_id": "order_items_product_id__products_product_id",
+      "er_relationship_urn": "urn:li:erModelRelationship:order_items_product_id__products_product_id",
+      "source_urn": "urn:li:dataset:(urn:li:dataPlatform:postgres,local-warehouse.warehouse.ecommerce.order_items,DEV)",
+      "destination_urn": "urn:li:dataset:(urn:li:dataPlatform:postgres,local-warehouse.warehouse.ecommerce.products,DEV)",
+      "source_field": "product_id",
+      "destination_field": "product_id",
+      "cardinality": "N_ONE",
+      "evidence_query_urns": [
+        "urn:li:query:jointreaty-25ad1b91138b3966",
+        "urn:li:query:jointreaty-334bc8d56bbd9272",
+        "urn:li:query:jointreaty-45029b0782938ed7"
+      ],
+      "evidence_count": 3,
+      "gates": [
+        {
+          "name": "repeated_evidence",
+          "passed": true,
+          "detail": "3 distinct query URNs (need >= 3)"
+        },
+        {
+          "name": "fields_exist",
+          "passed": true,
+          "detail": "product_id@order_items=True, product_id@products=True"
+        },
+        {
+          "name": "type_compatible",
+          "passed": true,
+          "detail": "BIGINT(integer) vs BIGINT(integer)"
+        },
+        {
+          "name": "cardinality_supported",
+          "passed": true,
+          "detail": "order_items.product_id duplicated -> N:1 to products.product_id"
+        }
+      ],
+      "read_after_write": {
+        "er_relationship_present": true,
+        "er_relationship_cardinality": "N_ONE",
+        "er_relationship_name": "order_items.product_id -> products.product_id",
+        "source_receipt_present": true,
+        "destination_receipt_present": true
+      },
+      "created_at": "2026-08-07T22:23:28.034450+00:00"
+    }
+  ]
+}

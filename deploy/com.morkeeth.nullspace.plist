@@ -1,0 +1,72 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Nullspace board + public tunnel, kept alive by launchd.
+
+  This exists because every process started from a chat session dies with that
+  session, and a demo URL that dies when a window closes is not a demo URL.
+  launchd owns it instead: it survives closing the terminal, and KeepAlive
+  restarts it if it falls over.
+
+  It does NOT survive the machine sleeping hard or losing network — a Cloudflare
+  quick tunnel mints a brand-new hostname on every restart, so after any restart
+  the URL changes. Read the current one out of the log:
+
+      grep -o 'https://[a-z-]*\.trycloudflare\.com' /tmp/nullspace-serve.log | tail -2
+
+  Port 8790, not 8787: Cursor holds 8787 on this machine.
+
+  Unload with:  launchctl bootout gui/$(id -u)/com.morkeeth.nullspace
+-->
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.morkeeth.nullspace</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/bash</string>
+    <string>/Users/morkeeth/Datahubhack-jt/scripts/serve.sh</string>
+    <string>--public</string>
+  </array>
+
+  <key>WorkingDirectory</key>
+  <string>/Users/morkeeth/Datahubhack-jt</string>
+
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key>
+    <string>/Users/morkeeth/Datahubhack/.venv/bin:/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+    <key>NULLSPACE_PYTHON</key>
+    <string>/Users/morkeeth/Datahubhack/.venv/bin/python</string>
+    <key>DATAHUB_GMS_URL</key>
+    <string>http://localhost:8080</string>
+    <key>NULLSPACE_STORE</key>
+    <string>/tmp/ns-demo.json</string>
+    <key>NULLSPACE_DBT_REPO</key>
+    <string>/Users/morkeeth/Datahubhack/dbt_project</string>
+    <key>NULLSPACE_DBT_SCHEMA</key>
+    <string>ecommerce</string>
+    <key>DBT_PROFILES_DIR</key>
+    <string>/Users/morkeeth/.dbt</string>
+    <key>NULLSPACE_BOARD_PORT</key>
+    <string>8790</string>
+    <key>NULLSPACE_MCP_PORT</key>
+    <string>8788</string>
+  </dict>
+
+  <key>RunAtLoad</key>
+  <true/>
+  <key>KeepAlive</key>
+  <dict>
+    <key>SuccessfulExit</key>
+    <false/>
+  </dict>
+  <key>ThrottleInterval</key>
+  <integer>15</integer>
+
+  <key>StandardOutPath</key>
+  <string>/tmp/nullspace-serve.log</string>
+  <key>StandardErrorPath</key>
+  <string>/tmp/nullspace-serve.err</string>
+</dict>
+</plist>

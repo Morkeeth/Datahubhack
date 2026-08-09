@@ -1,0 +1,14 @@
+{
+  "name": "datahub-hack",
+  "build": {
+    "dockerfile": "Dockerfile",
+    "context": ".."
+  },
+  "install": "bash scripts/install-deps.sh",
+  "start": "sudo service docker start || sudo dockerd >/tmp/dockerd.log 2>&1 & sleep 2; docker info >/dev/null 2>&1 || true",
+  "ports": [
+    { "name": "datahub-ui", "port": 9002 },
+    { "name": "datahub-gms", "port": 8080 },
+    { "name": "app", "port": 3000 }
+  ]
+}

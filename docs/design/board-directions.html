@@ -1,0 +1,199 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Nullspace board — three directions</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,200;9..144,700;9..144,900&family=IBM+Plex+Sans:wght@300;400;600&family=IBM+Plex+Mono:wght@400;500&family=Bricolage+Grotesque:opsz,wght@12..96,300;12..96,800&family=Archivo:wght@400;600;900&display=swap" rel="stylesheet">
+<style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:#111;font-family:'IBM Plex Sans',sans-serif}
+
+  /* ---------- switcher ---------- */
+  .switch{position:sticky;top:0;z-index:99;display:flex;gap:0;background:#000;border-bottom:1px solid #2a2a2a}
+  .switch button{flex:1;padding:14px 10px;background:none;border:0;border-right:1px solid #2a2a2a;
+    color:#777;font-family:'IBM Plex Mono',monospace;font-size:11px;letter-spacing:.14em;
+    text-transform:uppercase;cursor:pointer}
+  .switch button[aria-selected=true]{color:#fff;background:#1c1c1c}
+  .pane{display:none}
+  .pane[data-on=true]{display:block}
+  .note{padding:10px 20px;background:#000;color:#666;font-family:'IBM Plex Mono',monospace;font-size:11px}
+
+/* ============================================================ A — SÉANCE */
+  .A{--ink:oklch(0.97 0.01 220);--bg:oklch(0.16 0.02 240);--bg2:oklch(0.21 0.025 240);
+     --dim:oklch(0.62 0.02 240);--acc:oklch(0.80 0.14 195);--solid:oklch(0.90 0.05 210);
+     background:var(--bg);color:var(--ink);padding:40px 24px 80px;min-height:100vh}
+  .A .kicker{font-family:'IBM Plex Mono',monospace;font-size:11px;letter-spacing:.24em;
+     text-transform:uppercase;color:var(--acc)}
+  .A h1{font-family:'Fraunces',serif;font-weight:200;font-size:clamp(38px,7vw,76px);
+     line-height:.98;margin:14px 0 6px;letter-spacing:-.02em}
+  .A h1 em{font-style:normal;font-weight:900}
+  .A .sub{color:var(--dim);font-weight:300;max-width:54ch;font-size:15px}
+  .A .grid{display:grid;gap:18px;margin-top:40px;grid-template-columns:repeat(auto-fill,minmax(300px,1fr))}
+  .A .card{background:var(--bg2);padding:24px;border:1px dashed oklch(0.45 0.02 240);position:relative}
+  .A .card[data-state=solid]{border:1px solid var(--solid);background:oklch(0.25 0.03 240)}
+  .A .want{font-family:'Fraunces',serif;font-size:25px;font-weight:200;line-height:1.12;margin-bottom:20px}
+  .A .card[data-state=solid] .want{font-weight:700}
+  .A .num{font-family:'IBM Plex Mono',monospace;font-size:66px;font-weight:500;line-height:1;
+     color:var(--acc);letter-spacing:-.03em}
+  .A .numlab{font-family:'IBM Plex Mono',monospace;font-size:10px;letter-spacing:.2em;
+     text-transform:uppercase;color:var(--dim);margin-top:2px}
+  .A .who{margin-top:22px;border-top:1px solid oklch(0.32 0.02 240);padding-top:14px}
+  .A .who div{font-family:'IBM Plex Mono',monospace;font-size:12px;color:var(--dim);padding:3px 0}
+  .A .state{position:absolute;top:24px;right:24px;font-family:'IBM Plex Mono',monospace;
+     font-size:10px;letter-spacing:.18em;text-transform:uppercase;color:var(--dim)}
+  .A .card[data-state=solid] .state{color:var(--solid)}
+
+/* ========================================================= B — ORDER BOOK */
+  .B{--paper:oklch(0.96 0.004 250);--ink:oklch(0.20 0.01 250);--rule:oklch(0.86 0.006 250);
+     --dim:oklch(0.52 0.01 250);--acc:oklch(0.58 0.19 42);
+     background:var(--paper);color:var(--ink);padding:40px 24px 80px;min-height:100vh}
+  .B h1{font-family:'Bricolage Grotesque',sans-serif;font-weight:800;font-size:clamp(34px,6vw,60px);
+     letter-spacing:-.035em;line-height:.95}
+  .B .sub{font-weight:300;color:var(--dim);max-width:56ch;margin-top:10px;font-size:15px}
+  .B table{width:100%;border-collapse:collapse;margin-top:38px;font-variant-numeric:tabular-nums}
+  .B th{text-align:left;font-family:'IBM Plex Mono',monospace;font-size:10px;letter-spacing:.16em;
+     text-transform:uppercase;color:var(--dim);padding:0 12px 10px 0;border-bottom:2px solid var(--ink)}
+  .B td{padding:16px 12px 16px 0;border-bottom:1px solid var(--rule);vertical-align:top}
+  .B .w{font-family:'Bricolage Grotesque',sans-serif;font-weight:800;font-size:19px;letter-spacing:-.02em}
+  .B .bid{font-family:'IBM Plex Mono',monospace;font-size:30px;font-weight:500;color:var(--acc)}
+  .B .ladder{display:flex;gap:3px;margin-top:6px}
+  .B .ladder i{width:16px;height:6px;background:var(--acc);display:block}
+  .B .ladder i.empty{background:var(--rule)}
+  .B .who{font-family:'IBM Plex Mono',monospace;font-size:12px;color:var(--dim);line-height:1.7}
+  .B .fill{font-family:'IBM Plex Mono',monospace;font-size:10px;letter-spacing:.14em;
+     text-transform:uppercase;padding:4px 9px;border:1px solid var(--ink);display:inline-block}
+  .B .fill[data-f=filled]{background:var(--ink);color:var(--paper)}
+
+/* ======================================================== C — REQUISITION */
+  .C{--paper:oklch(0.985 0.002 250);--ink:oklch(0.30 0.07 250);--line:oklch(0.80 0.04 250);
+     --dim:oklch(0.55 0.03 250);--stamp:oklch(0.52 0.20 25);
+     background:var(--paper);color:var(--ink);padding:40px 24px 80px;min-height:100vh;
+     background-image:linear-gradient(var(--line) .5px,transparent .5px),
+                      linear-gradient(90deg,var(--line) .5px,transparent .5px);
+     background-size:28px 28px;background-position:-1px -1px}
+  .C .sheet{background:var(--paper);border:1.5px solid var(--ink);max-width:1100px;margin:0 auto}
+  .C .head{border-bottom:1.5px solid var(--ink);padding:22px 26px;display:flex;
+     justify-content:space-between;align-items:flex-start;gap:20px;flex-wrap:wrap}
+  .C h1{font-family:'Archivo',sans-serif;font-weight:900;font-size:clamp(26px,4.6vw,42px);
+     letter-spacing:-.03em;text-transform:uppercase;line-height:.94}
+  .C .meta{font-family:'IBM Plex Mono',monospace;font-size:10px;color:var(--dim);
+     letter-spacing:.1em;text-align:right;line-height:1.9}
+  .C .row{border-bottom:1px solid var(--line);padding:20px 26px;display:grid;
+     grid-template-columns:1fr auto;gap:20px;align-items:start}
+  .C .want{font-family:'Archivo',sans-serif;font-weight:600;font-size:19px;letter-spacing:-.01em}
+  .C .bom{font-family:'IBM Plex Mono',monospace;font-size:11.5px;color:var(--dim);
+     margin-top:9px;line-height:1.85}
+  .C .qty{font-family:'Archivo',sans-serif;font-weight:900;font-size:44px;line-height:.9;text-align:right}
+  .C .qtl{font-family:'IBM Plex Mono',monospace;font-size:9px;letter-spacing:.18em;
+     text-transform:uppercase;color:var(--dim);text-align:right;margin-top:4px}
+  .C .stamp{font-family:'Archivo',sans-serif;font-weight:900;font-size:13px;letter-spacing:.16em;
+     color:var(--stamp);border:2.5px solid var(--stamp);padding:5px 11px;display:inline-block;
+     transform:rotate(-4deg);text-transform:uppercase;margin-top:10px}
+  .C .pend{color:var(--dim);border-color:var(--line);transform:none}
+</style>
+</head>
+<body>
+
+<div class="switch" role="tablist">
+  <button role="tab" aria-selected="true" data-t="A">A · Séance</button>
+  <button role="tab" aria-selected="false" data-t="B">B · Order book</button>
+  <button role="tab" aria-selected="false" data-t="C">C · Requisition</button>
+</div>
+<div class="note">Real data, read from the live DataHub graph this session. No fabricated rows.</div>
+
+<!-- ================= A ================= -->
+<section class="pane A" data-on="true" data-pane="A">
+  <div class="kicker">Nullspace</div>
+  <h1>A catalog entry for data<br>that <em>does not exist yet</em>.</h1>
+  <p class="sub">Every agent that searches and misses leaves a mark. When enough of them
+  want the same thing, it gets built.</p>
+  <div class="grid" id="A-grid"></div>
+</section>
+
+<!-- ================= B ================= -->
+<section class="pane B" data-pane="B">
+  <h1>The demand book</h1>
+  <p class="sub">Unfilled orders for data. Each agent that asks is a bid. Three bids and a
+  builder fills it.</p>
+  <table>
+    <thead><tr><th>Asset demanded</th><th>Bids</th><th>Bid by</th><th>Status</th></tr></thead>
+    <tbody id="B-body"></tbody>
+  </table>
+</section>
+
+<!-- ================= C ================= -->
+<section class="pane C" data-pane="C">
+  <div class="sheet">
+    <div class="head">
+      <h1>Requisition<br>ledger</h1>
+      <div class="meta" id="C-meta"></div>
+    </div>
+    <div id="C-rows"></div>
+  </div>
+</section>
+
+<script>
+// Real ghosts, read from DataHub GraphQL this session.
+const GHOSTS = [
+  {want:"monthly recurring revenue by segment", demand:3, state:"solid",
+   requesters:["revenue-copilot-1.0.0","finance-agent-2.3.1","board-deck-writer-0.9.0"],
+   fields:["segment","mrr","month","churned_mrr"]},
+  {want:"weekly active teams by plan tier", demand:3, state:"solid",
+   requesters:["analytics-copilot-1.0.0","dbt-assistant-0.4.2","exec-dashboard-agent-2.1.0"],
+   fields:[]},
+  {want:"trial-to-paid conversion by cohort", demand:3, state:"solid",
+   requesters:["consumer-a","consumer-b","consumer-c"], fields:[]}
+];
+const THRESHOLD = 3;
+
+// A
+document.getElementById('A-grid').innerHTML = GHOSTS.map(g=>`
+  <article class="card" data-state="${g.state}">
+    <div class="state">${g.state}</div>
+    <div class="want">${g.want}</div>
+    <div class="num">${g.demand}</div>
+    <div class="numlab">agents asked</div>
+    <div class="who">${g.requesters.map(r=>`<div>${r}</div>`).join('')}</div>
+  </article>`).join('');
+
+// B
+document.getElementById('B-body').innerHTML = GHOSTS.map(g=>`
+  <tr>
+    <td><div class="w">${g.want}</div></td>
+    <td><div class="bid">${g.demand}</div>
+        <div class="ladder">${Array.from({length:THRESHOLD},(_,i)=>
+          `<i class="${i<g.demand?'':'empty'}"></i>`).join('')}</div></td>
+    <td class="who">${g.requesters.join('<br>')}</td>
+    <td><span class="fill" data-f="${g.state==='solid'?'filled':'open'}">${
+        g.state==='solid'?'filled':'unfilled'}</span></td>
+  </tr>`).join('');
+
+// C
+document.getElementById('C-meta').innerHTML =
+  `open requisitions &nbsp;${GHOSTS.length}<br>threshold &nbsp;${THRESHOLD} agents<br>source &nbsp;datahub gms`;
+document.getElementById('C-rows').innerHTML = GHOSTS.map(g=>`
+  <div class="row">
+    <div>
+      <div class="want">${g.want}</div>
+      <div class="bom">requested by &nbsp;${g.requesters.join(' · ')}${
+        g.fields.length?`<br>columns demanded &nbsp;${g.fields.join(' · ')}`:''}</div>
+      <div class="stamp ${g.state==='solid'?'':'pend'}">${
+        g.state==='solid'?'solid':'awaiting build'}</div>
+    </div>
+    <div><div class="qty">${g.demand}</div><div class="qtl">agents</div></div>
+  </div>`).join('');
+
+document.querySelectorAll('.switch button').forEach(b=>{
+  b.onclick = () => {
+    document.querySelectorAll('.switch button').forEach(x=>x.setAttribute('aria-selected', x===b));
+    document.querySelectorAll('.pane').forEach(p=>
+      p.setAttribute('data-on', p.dataset.pane===b.dataset.t));
+    window.scrollTo(0,0);
+  };
+});
+</script>
+</body>
+</html>

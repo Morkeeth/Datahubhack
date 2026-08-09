@@ -1,0 +1,28 @@
+# Ingest unmet demand into DataHub the same way any other source is ingested.
+#
+#   datahub ingest -c infra/datahub/nullspace_demand.yml
+#
+# Swap `events` for `postgres_log: /path/to/postgresql.log` in production.
+# Fully-qualified source type (custom source, no DataHub fork required).
+
+source:
+  type: nullspace.ingestion.demand.NullspaceDemandSource
+  config:
+    events:
+      - want: "churn by cohort"
+        agent_id: "ingestion-demo-finance-1.0"
+        sql: "SELECT cohort, churn_rate FROM ecommerce.churn_by_cohort"
+        needs_fields: ["cohort", "churn_rate"]
+      - want: "churn by cohort"
+        agent_id: "ingestion-demo-growth-2.0"
+        sql: "SELECT cohort, COUNT(*) FROM ecommerce.churn_by_cohort GROUP BY cohort"
+        needs_fields: ["cohort"]
+      - want: "churn by cohort"
+        agent_id: "ingestion-demo-board-0.9"
+        sql: "SELECT cohort, churn_rate FROM ecommerce.churn_by_cohort ORDER BY churn_rate DESC"
+        needs_fields: ["cohort", "churn_rate"]
+
+sink:
+  type: datahub-rest
+  config:
+    server: "${DATAHUB_GMS_URL:-http://localhost:8080}"
