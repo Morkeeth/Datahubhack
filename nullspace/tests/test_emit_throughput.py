@@ -20,3 +20,10 @@ def test_open_demand_cache_roundtrip():
     assert client.is_open_demand("foo")
     client.clear_open_demand("foo")
     assert not client.is_open_demand("foo")
+
+
+def test_flush_ghost_emits_noop_when_empty():
+    client = DataHubClient.__new__(DataHubClient)
+    client._ghost_buffer = []
+    client._ghost_buffer_meta = []
+    assert client.flush_ghost_emits() == 0

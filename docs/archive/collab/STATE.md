@@ -3,9 +3,9 @@
 > Every witness row names the **host** it was witnessed on and the command that
 > printed it. Night-run receipts from another host are not reused as truth here.
 
-- **Last updated:** 2026-08-09 ~23:45 UTC by Cursor Lane A
+- **Last updated:** 2026-08-09 ~23:55 UTC by Cursor Lane A
 - **Host:** `cursor`
-- **Phase:** Post-submit ~20h — final plan in `reviews/final-20h-plan.md`; cherry = green RFC #19022
+- **Phase:** Post-submit improvements shipped (D38 flush, D39 dbt pin); cherry still = Oscar applies RFC #19022
 - **Worker branch:** `cursor/datahub-hack-setup-4c9d`
 
 ## This turn
