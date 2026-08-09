@@ -257,15 +257,19 @@ def validate_model_sql(
     }
 
 
-def plan_for_demand(want: str) -> BuildPlan:
+def plan_for_demand(want: str, ns: Nullspace | None = None) -> BuildPlan:
     """Use a real builder-agent plan, otherwise an explicitly disclosed fallback."""
     agent_plan = _load_agent_plan(want)
     if agent_plan is not None:
         return agent_plan
 
-    from nullspace.agents.contracts import ContractStore
+    demanded: list[str] = []
+    if ns is not None:
+        demanded = ns.demanded_schema_from_catalog(want)
+    if not demanded:
+        from nullspace.agents.contracts import ContractStore
 
-    demanded = ContractStore().demanded_schema(want)
+        demanded = ContractStore().demanded_schema(want)
     if demanded:
         raise ValueError(
             "build refused: registered requester queries require the autonomous "
@@ -554,9 +558,13 @@ def solidify_after_merge(
     merge: bool = True,
 ) -> Ghost:
     """Observe (and optionally perform) PR merge, then solidify the claimed ghost."""
-    ghost = ns.store.get(want)
+    if ns.dh is not None:
+        ns.hydrate(replace=False)
+    ghost = ns.store.get(want) or ns._from_datahub(want)
     if ghost is None:
         raise ValueError(f"finalize refused: no ghost exists for demand {want!r}")
+    if ghost.urn and ns.store.get(want) is None:
+        ns.store.save(ghost)
     if not ghost.pr_url or not str(ghost.pr_url).startswith("https://github.com/"):
         raise ValueError(
             "finalize refused: ghost has no https://github.com PR URL; "
@@ -598,7 +606,24 @@ def solidify_after_merge(
             event="pr_merged",
             detail=viewed.stdout.strip(),
         )
-    plan = plan_for_demand(want)
+    agent_plan = _load_agent_plan(want)
+    if agent_plan is not None:
+        plan = agent_plan
+    else:
+        demanded = ns.demanded_schema_from_catalog(want)
+        if not demanded:
+            raise ValueError(
+                "finalize refused: no builder plan and no catalog contracts; "
+                "shortfall is demanded fields on the ghost URN"
+            )
+        plan = compile_agent_plan(
+            want=want,
+            requesters=list(ghost.requesters),
+            ghost_urn=ghost.urn,
+            demanded_fields=demanded,
+            queries=ns.contracts_for(want),
+            decision_reason="finalize after merge: compile from catalog contracts",
+        )
     return ns.solidify(
         want,
         schema_fields=plan.fields,
@@ -608,8 +633,11 @@ def solidify_after_merge(
 
 
 def build_and_solidify(ns: Nullspace, want: str, *, builder_id: str = "builder-1") -> Ghost:
+    # Catalog is SoT — survive deletion of /tmp mid-flight by rehydrating first.
+    if ns.dh is not None:
+        ns.hydrate(replace=False)
     cfg = settings()
-    plan = plan_for_demand(want)
+    plan = plan_for_demand(want, ns=ns)
     repo = Path(cfg.dbt_repo_path).resolve()
     repo.mkdir(parents=True, exist_ok=True)
     if not (repo / "dbt_project.yml").exists():

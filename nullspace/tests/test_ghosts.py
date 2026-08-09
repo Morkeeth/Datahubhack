@@ -98,3 +98,12 @@ def test_release_claim_reopens_demand_after_failed_build():
     assert released.claimed_by is None
     assert len(ns.ready_to_build()) == 1
     assert any(e.event == "release_claim" for e in released.resolution)
+
+
+def test_hydrate_refuses_without_catalog():
+    ns = Nullspace(MemoryGhostStore(), demand_threshold=3)
+    try:
+        ns.hydrate()
+        raise AssertionError("hydrate must refuse without dh")
+    except RuntimeError as exc:
+        assert "DataHub" in str(exc)
