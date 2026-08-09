@@ -248,9 +248,102 @@ def order_book() -> dict[str, Any]:
     }
 
 
+def unblocked(want: str) -> dict[str, Any]:
+    """Run the queries that could not run, and report what happened.
+
+    Every other number on this board is a read-back from the catalog. This one
+    is not, and it is deliberately the odd one out: the claim "these agents are
+    no longer blocked" cannot be proved by metadata, only by the query running.
+    So it runs them — the exact SQL each requester registered against a table
+    that did not exist, with the placeholder replaced by the table that now does.
+
+    Read-only by construction: the transaction is opened READ ONLY and rolled
+    back, and the whole endpoint is off on a public instance, because executing
+    stored SQL on demand from strangers is a different risk from showing them a
+    demand counter.
+    """
+    if os.getenv("NULLSPACE_PUBLIC", "").lower() in {"1", "true", "yes"}:
+        return {
+            "want": want,
+            "status": "disabled",
+            "reason": (
+                "This is a public instance. Proving the queries run means "
+                "executing SQL, and that is not something to do on request from "
+                "strangers. Clone the repo and run "
+                "`python scripts/agents_return.py` against your own stack."
+            ),
+        }
+
+    from nullspace.agents.contracts import ContractStore
+    from nullspace.persist import FileGhostStore
+
+    ghost = FileGhostStore().get(want)
+    if ghost is None or ghost.state != "solid":
+        return {
+            "want": want,
+            "status": "not solid",
+            "reason": "nothing has been built for this want yet",
+        }
+
+    contracts = ContractStore().queries(want)
+    if not contracts:
+        return {"want": want, "status": "no contracts", "queries": []}
+
+    schema = os.getenv("NULLSPACE_DBT_SCHEMA", "nullspace")
+    relation = f'{schema}."{ghost.dataset_name}"'
+    placeholders = ("<the table that does not exist>", "{}", "{table}")
+
+    import psycopg
+
+    results = []
+    runs = 0
+    try:
+        with psycopg.connect(settings().warehouse_dsn) as conn:
+            conn.read_only = True
+            for c in contracts:
+                sql = c.get("sql", "")
+                for ph in placeholders:
+                    sql = sql.replace(ph, relation)
+                row = {"agent_id": c.get("agent_id"), "sql": sql}
+                try:
+                    with conn.cursor() as cur:
+                        cur.execute(sql)
+                        fetched = cur.fetchmany(5)
+                        row["columns"] = [d.name for d in (cur.description or [])]
+                        row["rows"] = [[str(v) for v in r] for r in fetched]
+                    row["status"] = "runs"
+                    runs += 1
+                except Exception as exc:  # noqa: BLE001
+                    row["status"] = "blocked"
+                    row["error"] = f"{type(exc).__name__}: {exc}"
+                results.append(row)
+                conn.rollback()
+    except Exception as exc:  # noqa: BLE001
+        return {
+            "want": want,
+            "status": "warehouse unreachable",
+            "reason": f"{type(exc).__name__}: {exc}",
+        }
+
+    return {
+        "want": want,
+        "status": "verified",
+        "relation": relation,
+        "runs": runs,
+        "total": len(results),
+        "verified_by": "executing each registered query in a READ ONLY transaction",
+        "queries": results,
+    }
+
+
 @app.get("/api/board")
 def api_board() -> JSONResponse:
     return JSONResponse(read_catalog())
+
+
+@app.get("/api/unblocked")
+def api_unblocked(want: str) -> JSONResponse:
+    return JSONResponse(unblocked(want))
 
 
 @app.get("/api/order-book")

@@ -83,7 +83,33 @@
   .meta { overflow-wrap: anywhere; }
   .fields { color: var(--muted); font-size: 0.8125rem; }
   a.pr { color: var(--accent); font-family: "IBM Plex Mono", monospace; font-size: 0.75rem; }
+  /* The payoff. Dark, because it is the one block on this page that is not a
+     read-back from the catalog — it is the queries actually running. */
+  .unblocked {
+    background: var(--negative); color: var(--paper);
+    border-radius: 8px; padding: 1.5rem 1.75rem; margin: 0.5rem 0 1.5rem;
+    font-family: "IBM Plex Mono", monospace; font-size: 0.8125rem;
+  }
+  .unblocked h3 {
+    font-family: "IBM Plex Sans", sans-serif; font-size: 0.6875rem; font-weight: 600;
+    text-transform: uppercase; letter-spacing: 0.11em; color: var(--muted-dark);
+    margin: 0 0 1rem;
+  }
+  .unblocked .q { margin-bottom: 1.1rem; overflow-wrap: anywhere; }
+  .unblocked .agent { color: var(--accent); }
+  .unblocked .sql { color: var(--muted-dark); display: block; margin: 0.2rem 0; }
+  .unblocked .verdict { color: var(--paper); }
+  .unblocked .verdict.blocked { color: #e5806b; }
+  .unblocked table { width: auto; margin-top: 0.35rem; }
+  .unblocked td, .unblocked th {
+    border: none; padding: 0.1rem 1.25rem 0.1rem 0; font-size: 0.75rem;
+    color: var(--muted-dark); vertical-align: top;
+  }
+  .unblocked th { text-transform: none; letter-spacing: 0; font-weight: 500; color: var(--paper); }
+  .unblocked .note { color: var(--muted-dark); margin-top: 0.5rem; }
   .empty { color: var(--muted); padding: 2.5rem 0; }
+  .who .more { color: var(--accent); }
+  .tail { color: var(--muted); font-size: 0.875rem; padding: 1.25rem 0 0; max-width: 40rem; }
   .gone { background: var(--negative); color: var(--paper); border-radius: 8px; padding: 3rem 2rem; margin-top: 2.5rem; }
   .gone h3 { font-size: 1.5rem; font-weight: 300; letter-spacing: -0.03em; margin: 0 0 1rem; }
   .gone p { color: var(--muted-dark); max-width: 38rem; }
@@ -114,9 +140,13 @@
   <div id="body"></div>
 
   <footer id="foot">
-    Read live from DataHub. The requester identities and the warehouse rows are
-    disclosed demo data; the demand, the schemas, the lineage and the timings are
-    read back from the catalog. Nothing here is computed from a local file.
+    The requester identities and the warehouse rows are disclosed demo data. The
+    demand, the schemas, the lineage and the timings above are read back from a
+    running DataHub — this page keeps no copy of them, and shows nothing if the
+    catalog is unreachable. The dark block at the end is the one exception and is
+    labelled as such: it is not metadata, it is the registered queries being
+    executed in a READ ONLY transaction, because "these agents are no longer
+    blocked" is a claim only a query can settle.
   </footer>
 </div>
 
@@ -143,14 +173,15 @@ function openRow(r){
       <div class="want">${esc(r.want)}</div>
       <div class="meta">open ${ago(r.first_asked_ms)} · ${r.blocked_agents} ${r.blocked_agents===1?'agent':'agents'} blocked</div>
     </td>
-    <td class="who">${(r.requesters||[]).map(a=>`<span>${esc(a)}</span>`).join('')}</td>
-    <td class="meta">${esc(r.urn)}</td>
+    <td class="who">${(r.requesters||[]).slice(0,3).map(a=>`<span>${esc(a)}</span>`).join('')}${
+      (r.requesters||[]).length > 3 ? `<span class="more">+${r.requesters.length-3} more</span>` : ''}</td>
+    <td class="meta">${esc((r.urn.split(',')[1]||r.urn))}</td>
   </tr>`;
 }
 function filledRow(r){
   const pr = r.pr_url && /^https?:/.test(r.pr_url)
     ? `<a class="pr" href="${esc(r.pr_url)}" target="_blank" rel="noreferrer">the pull request</a>` : '';
-  return `<tr class="filled">
+  return `<tr class="filled" data-want="${esc(r.want)}">
     <td class="num">${r.demand}</td>
     <td>
       <div class="want">${esc(r.want)}</div>
@@ -180,19 +211,66 @@ async function refresh(){
     <div class="fig quiet"><b>${t.requests_unblocked}</b><span>requests unblocked</span></div>`;
 
   const open = d.open || [], filled = d.filled || [];
+  // A backlog is read from the top. Showing all forty turns the page into a
+  // wall nobody scrolls and no screenshot survives; the totals above still
+  // carry the full number, and the tail is counted rather than hidden.
+  const SHOWN = 12;
+  const shown = open.slice(0, SHOWN), hidden = open.length - shown.length;
   document.getElementById('body').innerHTML = `
     <h2>Unfilled — ranked by how many agents are waiting</h2>
-    ${open.length ? `<table>
+    ${shown.length ? `<table>
       <colgroup><col class="c-demand"><col class="c-want"><col class="c-who"><col class="c-rest"></colgroup>
       <thead><tr><th>Demand</th><th>What they wanted</th><th>Who asked</th><th>Catalog entry</th></tr></thead>
-      <tbody>${open.map(openRow).join('')}</tbody></table>`
+      <tbody>${shown.map(openRow).join('')}</tbody></table>
+      ${hidden > 0 ? `<div class="tail">and ${hidden} more, asked for by ${
+        open.slice(SHOWN).reduce((n,r)=>n+r.demand,0)} agents between them — the long tail
+        is most of the backlog, which is the point.</div>` : ''}`
       : `<div class="empty">Nothing outstanding. Every table an agent has asked for exists.</div>`}
     <h2>Filled</h2>
     ${filled.length ? `<table>
       <colgroup><col class="c-demand"><col class="c-want"><col class="c-who"><col class="c-rest"></colgroup>
       <thead><tr><th>Demand</th><th>What was built</th><th>Schema delivered</th><th>Evidence</th></tr></thead>
       <tbody>${filled.map(filledRow).join('')}</tbody></table>`
-      : `<div class="empty">Nothing has been built yet.</div>`}`;
+      : `<div class="empty">Nothing has been built yet.</div>`}
+    <div id="unblocked"></div>`;
+
+  // The ending: the agents that could not run, running. Fetched separately
+  // because unlike everything else on this page it is not a read-back — the
+  // server proves it by executing the queries.
+  if (filled.length) showUnblocked(filled[0].want);
+}
+
+async function showUnblocked(want) {
+  let d;
+  try { d = await (await fetch('/api/unblocked?want=' + encodeURIComponent(want))).json(); }
+  catch (e) { return; }
+  const el = document.getElementById('unblocked');
+  if (!el) return;
+  if (d.status === 'disabled') {
+    el.innerHTML = `<div class="unblocked"><h3>Queries unblocked</h3>
+      <div class="note">${esc(d.reason)}</div></div>`;
+    return;
+  }
+  if (d.status !== 'verified') return;
+  const rows = (d.queries || []).map(q => {
+    const head = q.columns && q.columns.length
+      ? `<table><tr>${q.columns.map(c => `<th>${esc(c)}</th>`).join('')}</tr>` +
+        (q.rows || []).map(r => `<tr>${r.map(v => `<td>${esc(v)}</td>`).join('')}</tr>`).join('') +
+        `</table>` : '';
+    return `<div class="q">
+      <span class="agent">${esc(q.agent_id)}</span>
+      <span class="sql">${esc(q.sql)}</span>
+      <span class="verdict ${q.status === 'runs' ? '' : 'blocked'}">${
+        q.status === 'runs' ? `RUNS — ${(q.rows || []).length} rows` : 'STILL BLOCKED — ' + esc(q.error || '')
+      }</span>
+      ${head}
+    </div>`;
+  }).join('');
+  el.innerHTML = `<div class="unblocked">
+    <h3>${d.runs} of ${d.total} queries that could not run, now run — ${esc(want)}</h3>
+    ${rows}
+    <div class="note">None of these agents asked again. Verified by ${esc(d.verified_by)}.</div>
+  </div>`;
 }
 refresh(); setInterval(refresh, 2000);
 </script>
