@@ -8,6 +8,7 @@ with custom properties:
   nullspace.requesters   — comma-separated agent ids
   nullspace.resolution   — JSON history (Scar Tissue steal: who asked / when / what failed)
   nullspace.pr_url       — set when builder opens a PR
+  nullspace.contracts    — JSON list of registered requester queries (catalog SoT)
 """
 
 from __future__ import annotations
@@ -317,11 +318,121 @@ class Nullspace:
             return ghost
 
     def ready_to_build(self) -> list[Ghost]:
+        if self.dh is not None:
+            self.hydrate(replace=False)
         return [
             g
             for g in self.store.list_ghosts()
             if g.state == "ghost" and g.demand >= self.demand_threshold
         ]
+
+    def hydrate(self, *, replace: bool = True) -> dict[str, Any]:
+        """Rebuild the local cache from DataHub. The catalog is the source of truth."""
+        if self.dh is None:
+            raise RuntimeError(
+                "hydrate refused: DataHub client required; shortfall is 1 healthy GMS"
+            )
+        urns = self.dh.list_nullspace_urns()
+        restored: list[str] = []
+        with self.store.transaction():
+            if replace:
+                self.store.clear()
+            for urn in urns:
+                ghost = self._from_datahub_urn(urn)
+                if ghost is None:
+                    continue
+                local = None if replace else self.store.get(ghost.want)
+                if local is not None and local.demand > ghost.demand:
+                    # Local write may be ahead of search-index lag; keep the richer copy
+                    # only when it already mirrors the same URN.
+                    if local.urn == ghost.urn:
+                        continue
+                self.store.save(ghost)
+                restored.append(ghost.want)
+        return {
+            "status": "hydrated",
+            "host_store": "cache",
+            "source": "datahub",
+            "urn_count": len(urns),
+            "restored_count": len(restored),
+            "wants": restored,
+        }
+
+    def register_contract(
+        self,
+        want: str,
+        *,
+        agent_id: str,
+        sql: str,
+        needs_fields: list[str],
+    ) -> dict[str, Any]:
+        """Persist a requester query against the ghost URN in DataHub (not /tmp)."""
+        if self.dh is None:
+            raise RuntimeError(
+                "register_contract refused: DataHub required; shortfall is 1 healthy GMS"
+            )
+        ghost = self.store.get(want) or self._from_datahub(want)
+        if ghost is None:
+            raise ValueError(
+                f"register_contract refused: no ghost exists for demand {want!r}"
+            )
+        from nullspace.emit import emit_contracts
+
+        contracts = self.contracts_for(want)
+        contracts = [c for c in contracts if c.get("agent_id") != agent_id]
+        row = {
+            "agent_id": agent_id,
+            "want": want,
+            "sql": sql,
+            "needs_fields": list(needs_fields),
+            "at_ms": now_ms(),
+        }
+        contracts.append(row)
+        witness = emit_contracts(self.dh, ghost.urn, contracts)
+        ghost.resolution.append(
+            ResolutionEvent(
+                agent_id=agent_id,
+                at_ms=now_ms(),
+                event="register_query",
+                detail=json.dumps(
+                    {"needs_fields": needs_fields, "sql": sql[:300]}, sort_keys=True
+                ),
+            )
+        )
+        self._mirror(ghost)
+        self.store.save(ghost)
+        return {
+            "status": "registered",
+            "urn": ghost.urn,
+            "contracts": contracts,
+            "witness_contract_count": len(
+                json.loads(
+                    (witness.get("properties") or {}).get("nullspace.contracts") or "[]"
+                )
+            ),
+        }
+
+    def contracts_for(self, want: str) -> list[dict[str, Any]]:
+        if self.dh is None:
+            return []
+        urn = ghost_urn(want)
+        props = self.dh.dataset_custom_properties(urn)
+        if not props:
+            return []
+        try:
+            rows = json.loads(props.get("nullspace.contracts") or "[]")
+        except (TypeError, ValueError):
+            return []
+        return rows if isinstance(rows, list) else []
+
+    def demanded_schema_from_catalog(self, want: str) -> list[str]:
+        out: list[str] = []
+        for row in self.contracts_for(want):
+            for field_name in row.get("needs_fields") or []:
+                name = str(field_name)
+                if name not in out:
+                    out.append(name)
+        return out
 
     def reset(self) -> dict[str, Any]:
         """Wipe local ghosts and hard-delete every nullspace platform dataset."""
@@ -375,10 +486,15 @@ class Nullspace:
         """Hydrate deterministic ghost state so separate agent processes converge."""
         if self.dh is None:
             return None
-        urn = ghost_urn(want)
+        return self._from_datahub_urn(ghost_urn(want))
+
+    def _from_datahub_urn(self, urn: str) -> Ghost | None:
+        if self.dh is None:
+            return None
         props = self.dh.dataset_custom_properties(urn)
         if not props or "nullspace.want" not in props:
             return None
+        want = props.get("nullspace.want") or ""
         try:
             resolution = [
                 ResolutionEvent(**event)
@@ -406,7 +522,7 @@ class Nullspace:
                 for upstream in (witness.get("lineage") or {}).get("upstreams", [])
             ]
         return Ghost(
-            want=props.get("nullspace.want", want),
+            want=want,
             urn=urn,
             dataset_name=ghost_dataset_name(want),
             demand=int(props.get("nullspace.demand", "0")),

@@ -50,6 +50,8 @@ def emit_ghost(dh: DataHubClient, ghost: Ghost) -> dict[str, Any]:
     description = (
         f"Nullspace {'SOLID' if ghost.state == 'solid' else 'GHOST'} for demand: {ghost.want}"
     )
+    # Preserve catalog-resident contracts across lifecycle mirrors (SoT is GMS).
+    prior = dh.dataset_custom_properties(ghost.urn)
     custom = {
         "nullspace.demand": str(ghost.demand),
         "nullspace.want": ghost.want,
@@ -70,6 +72,8 @@ def emit_ghost(dh: DataHubClient, ghost: Ghost) -> dict[str, Any]:
             ]
         ),
     }
+    if prior.get("nullspace.contracts"):
+        custom["nullspace.contracts"] = prior["nullspace.contracts"]
 
     props = DatasetPropertiesClass(
         name=ghost.dataset_name,
@@ -291,6 +295,39 @@ def _verify_solid_witness(ghost: Ghost, witness: dict[str, Any]) -> None:
             + "; ".join(failures)
             + f"; witness={json.dumps(witness, sort_keys=True)}"
         )
+
+
+def emit_contracts(
+    dh: DataHubClient, urn: str, contracts: list[dict[str, Any]]
+) -> dict[str, Any]:
+    """Write requester query contracts onto the ghost dataset in GMS.
+
+    Stock DataHub v1.7.0 has no Demand/Contract aspect we can register mid-hackathon
+    without a GMS rebuild — verified by staying on SDK stock aspects only. Closest
+    first-class home on an existing dataset URN: `datasetProperties.customProperties`
+    key `nullspace.contracts` (JSON), next to resolution history, pending an RFC aspect.
+    """
+    props = dh.graph.get_aspect(urn, DatasetPropertiesClass)
+    if props is None:
+        raise RuntimeError(
+            f"emit_contracts refused: no datasetProperties on {urn!r}; "
+            "shortfall is 1 ghost already mirrored to DataHub"
+        )
+    custom = dict(props.customProperties or {})
+    custom["nullspace.contracts"] = json.dumps(contracts)
+    updated = DatasetPropertiesClass(
+        name=props.name,
+        description=props.description,
+        customProperties=custom,
+    )
+    dh.emit_aspect(urn, updated)
+    read_back = dh.dataset_custom_properties(urn)
+    if read_back.get("nullspace.contracts") != custom["nullspace.contracts"]:
+        raise RuntimeError(
+            "DataHub contracts read-after-write failed: "
+            f"returned {read_back.get('nullspace.contracts')!r}"
+        )
+    return {"urn": urn, "properties": read_back}
 
 
 def board_snapshot(ghosts: list[Ghost]) -> dict[str, Any]:

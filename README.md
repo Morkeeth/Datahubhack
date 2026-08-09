@@ -123,13 +123,38 @@ python3 -m nullspace.cli reset
 
 After reset, DataHub search for platform `nullspace` returns **0** assets.
 
+## The catalog is the database
+
+Local JSON under `/tmp` is a cache. Demand, requesters, contracts, resolution
+history, and the state machine live on DataHub. Delete the files mid-demo and
+rehydrate:
+
+```bash
+rm -f /tmp/nullspace-*.json
+python3 -m nullspace.cli hydrate
+python3 -m nullspace.cli dump
+```
+
+Register requester SQL against the ghost URN (read back with the sidecar gone):
+
+```bash
+python3 -m nullspace.cli register-query --want "…" --agent "…" --sql "…" --fields "a,b"
+rm -f /tmp/nullspace-contracts.json
+python3 -m nullspace.cli contract-status --want "…"
+```
+
+Why ghosts are Dataset URNs: [docs/design/why-a-dataset-urn.md](docs/design/why-a-dataset-urn.md).
+
 ## Subtraction proof (Law 2)
 
 With GMS unreachable, three isolated agents each refuse — there is no shared
-namespace in which their demand can be named:
+namespace in which their demand can be named. The script is an acceptance test
+(non-zero if any assertion silently succeeds):
 
 ```bash
 ./scripts/without-datahub.sh
+# Prove it can fail:
+NULLSPACE_DEAD_GMS=http://localhost:8080 ./scripts/without-datahub.sh; echo $?
 ```
 
 Deleting DataHub does not degrade Nullspace into a local JSON loop; it deletes

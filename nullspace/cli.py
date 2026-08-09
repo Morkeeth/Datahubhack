@@ -11,7 +11,7 @@ from nullspace.ghosts import Nullspace, consumer_search
 from nullspace.persist import FileGhostStore
 
 
-def _ns(*, require_catalog: bool = True) -> Nullspace:
+def _ns(*, require_catalog: bool = True, hydrate: bool = True) -> Nullspace:
     cfg = settings()
     store = FileGhostStore()
     dh = DataHubClient(cfg)
@@ -28,11 +28,14 @@ def _ns(*, require_catalog: bool = True) -> Nullspace:
                 }
             )
         )
-    return Nullspace(
+    ns = Nullspace(
         store,
         demand_threshold=cfg.demand_threshold,
         dh=dh if dh.healthy() else None,
     )
+    if hydrate and ns.dh is not None:
+        ns.hydrate(replace=False)
+    return ns
 
 
 def cmd_ask(args: argparse.Namespace) -> int:
@@ -85,7 +88,7 @@ def cmd_finalize(args: argparse.Namespace) -> int:
 
 
 def cmd_reset(_: argparse.Namespace) -> int:
-    ns = _ns()
+    ns = _ns(hydrate=False)
     result = ns.reset()
     print(json.dumps(result, indent=2))
     if result.get("datahub_nullspace_count", 0) != 0:
@@ -93,9 +96,53 @@ def cmd_reset(_: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_hydrate(_: argparse.Namespace) -> int:
+    ns = _ns(hydrate=False)
+    result = ns.hydrate(replace=True)
+    print(json.dumps(result, indent=2))
+    return 0
+
+
 def cmd_board_dump(_: argparse.Namespace) -> int:
-    store = FileGhostStore()
-    print(json.dumps([g.to_public() for g in store.list_ghosts()], indent=2))
+    """Dump ghosts from the catalog (hydrate cache first). Local file alone is not truth."""
+    ns = _ns(hydrate=False)
+    if ns.dh is None:
+        print("[]")
+        return 1
+    ns.hydrate(replace=True)
+    print(json.dumps([g.to_public() for g in ns.store.list_ghosts()], indent=2))
+    return 0
+
+
+def cmd_register_query(args: argparse.Namespace) -> int:
+    ns = _ns()
+    fields = [f.strip() for f in args.fields.split(",") if f.strip()]
+    result = ns.register_contract(
+        args.want,
+        agent_id=args.agent,
+        sql=args.sql,
+        needs_fields=fields,
+    )
+    print(json.dumps(result, indent=2))
+    return 0
+
+
+def cmd_contract_status(args: argparse.Namespace) -> int:
+    """Answer from GMS even when the /tmp contracts sidecar is gone."""
+    ns = _ns()
+    contracts = ns.contracts_for(args.want)
+    print(
+        json.dumps(
+            {
+                "status": "ok",
+                "want": args.want,
+                "source": "datahub",
+                "contracts": contracts,
+                "demanded_schema": ns.demanded_schema_from_catalog(args.want),
+            },
+            indent=2,
+        )
+    )
     return 0
 
 
@@ -154,11 +201,38 @@ def main(argv: list[str] | None = None) -> None:
     r = sub.add_parser("reset", help="wipe local store and hard-delete nullspace assets")
     r.set_defaults(func=cmd_reset)
 
+    h = sub.add_parser(
+        "hydrate",
+        help="rebuild local cache from DataHub alone (catalog is source of truth)",
+    )
+    h.set_defaults(func=cmd_hydrate)
+
     d = sub.add_parser("demo", help="full ghost→solid beat")
     d.set_defaults(func=cmd_demo)
 
-    s = sub.add_parser("dump", help="print ghost store JSON")
+    s = sub.add_parser("dump", help="hydrate from DataHub then print ghosts")
     s.set_defaults(func=cmd_board_dump)
+
+    rq = sub.add_parser(
+        "register-query",
+        help="register a requester SQL contract onto the ghost in DataHub",
+    )
+    rq.add_argument("--want", required=True)
+    rq.add_argument("--agent", required=True)
+    rq.add_argument("--sql", required=True)
+    rq.add_argument(
+        "--fields",
+        required=True,
+        help="comma-separated field names the query needs",
+    )
+    rq.set_defaults(func=cmd_register_query)
+
+    cs = sub.add_parser(
+        "contract-status",
+        help="read registered contracts from DataHub (sidecar optional)",
+    )
+    cs.add_argument("--want", required=True)
+    cs.set_defaults(func=cmd_contract_status)
 
     args = p.parse_args(argv)
     raise SystemExit(args.func(args))

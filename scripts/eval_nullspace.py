@@ -89,13 +89,46 @@ def dataset(urn: str) -> dict | None:
     return gql(q).get("data", {}).get("dataset")
 
 
-def ghost_count(want_fragment: str) -> list[str]:
-    q = (
-        '{ searchAcrossEntities(input:{query:"%s", start:0, count:50}) '
-        "{ searchResults { entity { urn } } } }" % want_fragment
-    )
-    res = gql(q)["data"]["searchAcrossEntities"]["searchResults"]
-    return [r["entity"]["urn"] for r in res if ":nullspace," in r["entity"]["urn"]]
+def ghost_urns_for_want(want: str) -> list[str]:
+    """Exact-want match via datasetProperties — never WANT.split()[0] prefix search."""
+    q = """
+    {
+      search(input: {
+        type: DATASET,
+        query: "*",
+        orFilters: [{ and: [{ field: "platform", values: ["urn:li:dataPlatform:nullspace"] }] }],
+        start: 0, count: 100
+      }) {
+        searchResults {
+          entity {
+            urn
+            ... on Dataset {
+              properties { customProperties { key value } }
+            }
+          }
+        }
+      }
+    }
+    """
+    res = gql(q)["data"]["search"]["searchResults"]
+    want_key = want.strip().lower()
+    matched: list[str] = []
+    for row in res:
+        entity = row.get("entity") or {}
+        urn = entity.get("urn") or ""
+        if ":nullspace," not in urn:
+            continue
+        props = {
+            p["key"]: p["value"]
+            for p in ((entity.get("properties") or {}).get("customProperties") or [])
+        }
+        if (props.get("nullspace.want") or "").strip().lower() == want_key:
+            matched.append(urn)
+    return matched
+
+
+def ghost_count(want: str) -> list[str]:
+    return ghost_urns_for_want(want)
 
 
 # ---------------------------------------------------------------------- mcp
@@ -127,9 +160,25 @@ async def agent_call(name: str, version: str, tool: str, args: dict) -> dict:
 async def main() -> int:
     started = time.time()
 
-    if "--cold" in sys.argv and os.path.exists(STORE):
-        os.remove(STORE)
-        print(f"(cold: removed {STORE})")
+    if "--cold" in sys.argv:
+        if os.path.exists(STORE):
+            os.remove(STORE)
+            print(f"(cold: removed {STORE})")
+        contracts = os.getenv("NULLSPACE_CONTRACTS", "/tmp/nullspace-contracts.json")
+        if os.path.exists(contracts):
+            os.remove(contracts)
+            print(f"(cold: removed {contracts})")
+        # Catalog is SoT — cold means hollow graph + hollow cache.
+        print("(cold: nullspace reset)")
+        reset = subprocess.run(
+            [sys.executable, "-m", "nullspace.cli", "reset"],
+            capture_output=True,
+            text=True,
+        )
+        print(reset.stdout or reset.stderr)
+        if reset.returncode != 0:
+            bad(f"cold reset failed (exit {reset.returncode})")
+            return summary(started)
 
     head("CHECK 0 — DataHub is answering")
     try:
@@ -155,7 +204,7 @@ async def main() -> int:
         )
 
     head("CHECK 2 — DataHub holds exactly one ghost, with all requesters")
-    urns = ghost_count(WANT.split()[0])
+    urns = ghost_count(WANT)
     (ok if len(urns) == 1 else bad)(
         f"DataHub returns {len(urns)} nullspace entity/entities for this demand (expected 1)"
     )
@@ -174,7 +223,7 @@ async def main() -> int:
     r4 = await agent_call(*FOURTH, "find_dataset", {"want": WANT})
     d4 = r4.get("ghost", {}).get("demand")
     (ok if d4 == 4 else bad)(f"4th independent agent -> demand {d4} (expected 4)")
-    (ok if len(ghost_count(WANT.split()[0])) == 1 else bad)(
+    (ok if len(ghost_count(WANT)) == 1 else bad)(
         "still exactly one ghost in DataHub after the 4th miss"
     )
 
