@@ -409,6 +409,7 @@ function render(ghosts, live) {
 
 async function load() {
   let ghosts = DEMO, live = false;
+  if (new URLSearchParams(location.search).get('demo') === '1') { render(ghosts, false); return; }
   try {
     const data = await (await fetch("/api/board")).json();
     if (data.ghosts && data.ghosts.length && data.catalog === "live") {
@@ -429,15 +430,24 @@ async function load() {
   render(ghosts, live);
 }
 
-document.getElementById("blurb").innerHTML = BLURBS.D;
+function showTab(t) {
+  const id = BLURBS[t] ? t : "D";
+  document.querySelectorAll(".chrome button").forEach(x =>
+    x.setAttribute("aria-selected", x.dataset.t === id));
+  document.querySelectorAll(".pane").forEach(p =>
+    p.classList.toggle("on", p.dataset.pane === id));
+  document.getElementById("blurb").innerHTML = BLURBS[id];
+  window.scrollTo(0, 0);
+}
 document.querySelectorAll(".chrome button").forEach(b => {
   b.onclick = () => {
-    document.querySelectorAll(".chrome button").forEach(x => x.setAttribute("aria-selected", x === b));
-    document.querySelectorAll(".pane").forEach(p => p.classList.toggle("on", p.dataset.pane === b.dataset.t));
-    document.getElementById("blurb").innerHTML = BLURBS[b.dataset.t];
-    window.scrollTo(0, 0);
+    const u = new URL(location.href);
+    u.searchParams.set("t", b.dataset.t);
+    history.replaceState(null, "", u);
+    showTab(b.dataset.t);
   };
 });
+showTab(new URLSearchParams(location.search).get("t") || "D");
 load();
 </script>
 </body>
