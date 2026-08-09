@@ -145,6 +145,12 @@ python3 -m nullspace.cli contract-status --want "…"
 
 Why ghosts are Dataset URNs: [docs/design/why-a-dataset-urn.md](docs/design/why-a-dataset-urn.md).
 
+Demand as a stock ingestion source (the RFC with a connector behind it):
+
+```bash
+datahub ingest -c infra/datahub/nullspace_demand.yml
+```
+
 ## Subtraction proof (Law 2)
 
 With GMS unreachable, three isolated agents each refuse — there is no shared
