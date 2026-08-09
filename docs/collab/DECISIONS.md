@@ -32,6 +32,7 @@ Status values: `PROPOSED` · `DECIDED` · `OPEN` · `SUPERSEDED`.
 | D22 | 2026-08-09 | Builder SQL must change grain (`GROUP BY` / join aggregates) or decline with an exact shortfall. Passthrough `SELECT` of existing columns is not fulfilment. Generation tier is disclosed: API key → `claude` CLI → deterministic. | **DECIDED & verified on host `cursor`** | Cursor Lane A | `nullspace/sqlgen.py`; MRR Aggregate; join lineage.total=3; trials⨝revenue without key declines |
 | D23 | 2026-08-09 | `hard_delete_urn` / `nullspace reset` may only touch `urn:li:dataPlatform:nullspace` datasets. Refusal receipts must not raise `KeyError` on missing `urn`. | **DECIDED & verified** | Cursor Lane A | BUG-1/BUG-2 in HANDOFF 006 |
 | D24 | 2026-08-09 | Law 2: `consumer_search` refuses when `dh is None` unless `offline=True` (unit tests only). Unreachable GMS refuses — never local-ghost. `scripts/without-datahub.sh` is the subtraction proof. `up.sh` must wait on warehouse `pg_isready`, not GMS alone. | **DECIDED & verified on host `cursor`** | Cursor Lane A | three agents `status=refused`; redteam R7 patched |
+| D25 | 2026-08-09 | SQL validation failure after `claim` must `release_claim` (state → `ghost`, clear `claimed_by`/`pr_url`) so half-up warehouse does not strand demand. | **DECIDED & unit-tested** | Cursor Lane A | redteam R7b; `Nullspace.release_claim` |
 
 ## Open items (not yet decisions)
 

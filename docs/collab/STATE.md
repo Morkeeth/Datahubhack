@@ -31,8 +31,9 @@ Lane B must ship GraphQL board. Lane A closed the MCP local-ghost hole via
 ## Next actions (priority = redteam 3/3 then blockers)
 
 1. **Lane B:** GraphQL board (R1 / multimodel 3/3) — judged URL must die if GMS dies.
-2. **Oscar:** Cursor GitHub App → add `Morkeeth/nullspace-dbt` (or run builder as Morkeeth) → new PR with grain SQL + body → merge → `python3 -m nullspace.cli finalize --want "…"`.
-3. **Lane A:** do not rewrite `emit.py`; keep generation tier disclosed; optional eval Ctrl-C hygiene (R8, 1/3).
+2. **Lane B:** `scripts/eval_nullspace.py` R8 — stop `ghost_count(WANT.split()[0])`; match exact want/URN; `--cold` should hard-reset nullspace assets (file says LANE B).
+3. **Oscar:** Cursor GitHub App → add `Morkeeth/nullspace-dbt` (or run builder as Morkeeth) → new PR with grain SQL + body → merge → `python3 -m nullspace.cli finalize --want "…"`.
+4. **Lane A:** do not rewrite `emit.py`; keep generation tier disclosed. `release_claim` on SQL validation failure shipped (R7b).
 
 ## Canonical docs
 

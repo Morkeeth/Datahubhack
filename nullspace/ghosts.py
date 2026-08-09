@@ -181,6 +181,40 @@ class Nullspace:
             self.store.save(ghost)
             return ghost
 
+    def release_claim(
+        self, want: str, *, builder_id: str, detail: str = "build failed"
+    ) -> Ghost:
+        """Return a claimed ghost to open demand so a failed build can be retried."""
+        with self.store.transaction():
+            ghost = self.store.get(want)
+            if ghost is None:
+                raise ValueError(
+                    f"release_claim refused: no ghost exists for demand {want!r}"
+                )
+            if ghost.state != "claimed":
+                raise ValueError(
+                    f"release_claim refused: state is {ghost.state!r}, not 'claimed'"
+                )
+            if ghost.claimed_by and ghost.claimed_by != builder_id:
+                raise ValueError(
+                    "release_claim refused: "
+                    f"claimed by {ghost.claimed_by!r}, not {builder_id!r}"
+                )
+            ghost.state = "ghost"
+            ghost.claimed_by = None
+            ghost.pr_url = None
+            ghost.resolution.append(
+                ResolutionEvent(
+                    agent_id=builder_id,
+                    at_ms=now_ms(),
+                    event="release_claim",
+                    detail=detail,
+                )
+            )
+            self._mirror(ghost)
+            self.store.save(ghost)
+            return ghost
+
     def attach_pr(self, want: str, pr_url: str) -> Ghost:
         with self.store.transaction():
             ghost = self.store.get(want)

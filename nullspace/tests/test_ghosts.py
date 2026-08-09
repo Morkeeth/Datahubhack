@@ -85,3 +85,16 @@ def test_missing_client_refuses_unless_offline():
         ns, want="no catalog", agent_id="solo", dh=None, offline=True
     )
     assert offline["status"] == "miss_ghosted"
+
+
+def test_release_claim_reopens_demand_after_failed_build():
+    ns = Nullspace(MemoryGhostStore(), demand_threshold=3)
+    want = "orders by country"
+    for agent in ("a", "b", "c"):
+        consumer_search(ns, want=want, agent_id=agent, dh=None, offline=True)
+    ns.claim(want, "builder-1")
+    released = ns.release_claim(want, builder_id="builder-1", detail="warehouse down")
+    assert released.state == "ghost"
+    assert released.claimed_by is None
+    assert len(ns.ready_to_build()) == 1
+    assert any(e.event == "release_claim" for e in released.resolution)

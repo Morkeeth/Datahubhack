@@ -627,11 +627,12 @@ def build_and_solidify(ns: Nullspace, want: str, *, builder_id: str = "builder-1
         )
     except Exception as exc:
         detail = f"{type(exc).__name__}: {str(exc)[:500]}"
-        ns.record_resolution(
+        # Do not strand the ghost in `claimed` — half-up warehouse / bad SQL
+        # must leave demand open for retry (redteam WEAPON 2).
+        ns.release_claim(
             want,
-            agent_id=builder_id,
-            event="sql_validation_failed",
-            detail=detail,
+            builder_id=builder_id,
+            detail=f"sql_validation_failed: {detail}",
         )
         raise ValueError(
             "build refused: generated SQL failed warehouse validation; "
