@@ -92,13 +92,18 @@ contract_status("monthly recurring revenue by segment")
 
 - [ ] cold clone, `docker compose up` from scratch, ingestion reports *Pipeline finished successfully*
 - [ ] ghost store and contract store deleted — demand must start at zero on camera
-- [ ] `contract_status` returns **3 running / 0 blocked** (blocked on Lane A publishing schema)
-- [ ] Owners panel populated (blocked on Lane A / L2b)
+- [ ] `nullspace reset` (or fresh volumes) so demand climbs from zero on camera — no throughput noise
+- [ ] `contract_status` returns **3 running / 0 blocked**
+- [ ] Owners panel populated in DataHub (native Owners, not a custom UI)
 - [ ] no terminal shows a `WARN: DataHub GMS not reachable` line
 - [ ] any seeded/demo data named as such on screen (playbook #43 — mock the presentation, never the proof)
+- [ ] this recording’s `pr_url` is `https://github.com/...` before VO says “pull request”
+- [ ] solid materialisation method known (`dbt_run` vs `warehouse_ctas`) before VO says “dbt”
 
-## Two claims that must NOT be in the video until they are true
+## Two claims that must NOT be in the video until they are true *on this recording*
 
-1. **"opens a real pull request"** — `pr_url` is currently a `file://` path. Blocked on D9.
+1. **"opens a real pull request"** — only if this shoot shows an `https://github.com/` URL.
+   `nullspace-dbt` #1 and #2 are already merged; a `file://` path on the demo host is still
+   not a PR. See `docs/submission/REVIEW-NOTES.md`.
 2. **"works with any agent"** — say *"any MCP client"* and show two real ones, or say
    nothing. Playbook #45: designed-to, never does.
