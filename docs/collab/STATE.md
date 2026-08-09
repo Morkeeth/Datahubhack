@@ -3,28 +3,25 @@
 > Every witness row names the **host** it was witnessed on and the command that
 > printed it. Night-run receipts from another host are not reused as truth here.
 
-- **Last updated:** 2026-08-09 ~14:30 UTC by Cursor Lane A
+- **Last updated:** 2026-08-09 ~15:50 UTC by Cursor Lane A
 - **Host:** `cursor`
-- **Phase:** Build day — witness parity + soft-merge ingest; video tomorrow
+- **Phase:** Build day — harvest throughput + dbt solidify gate
 - **Worker branch:** `cursor/datahub-hack-setup-4c9d`
 
-## Today (video tomorrow)
+## This turn
 
 | Slice | Status | Witness |
 |---|---|---|
-| Structured props + Queries + Owners from miss | ✅ | earlier |
-| Demand ingestion + webhook + plans/receipts/Assertions | ✅ | earlier |
-| `solid_witness` assertion + queries | ✅ | want `witness-parity-*`: assertion DATA_SCHEMA fields present |
-| Finalize refreshes catalog receipt | ✅ | `solidify_after_merge` → `_write_review_receipt` |
-| Webhook uses CLI store policy | ✅ | `NULLSPACE_STORE=memory` hydrate-only |
-| Demand ingest soft-merge claimed/solid | ✅ | `merge_demand_custom` unit + live prior solid |
-| README cold `export NULLSPACE_STORE` + `--review-want` | ✅ | docs |
+| Batch MCP emits (ghost buffer + oneshot corpuser) | ✅ | 629 pairs in **24.43s** (was >10 min / died at 63%) |
+| Open-demand search skip after first miss | ✅ | same run |
+| Solidify requires materialised ≥1 row | ✅ | `warehouse_ctas` fallback when dbt Fusion lacks Postgres; 0-row refuses |
+| AGENTS.md daemon.json false claim | ✅ | documents empty-by-design; no repo `daemon.json` |
 
 ## Still open (not video)
 
 1. Host webhook + GitHub App write to `nullspace-dbt` (Oscar)
-2. File OSS PR to `datahub-project/datahub` from the sketch (Oscar / Lane B)
-3. Lane B: kill MCP “recorded locally” warning; submission package (+ video tomorrow)
+2. File OSS PR (Oscar / Lane B)
+3. Lane B: MCP “recorded locally” warning; submission + video tomorrow
 
 ## Handback — Lane B
 

@@ -31,6 +31,20 @@ class DataHubClient:
         self._headers = {"Content-Type": "application/json"}
         if self.cfg.token:
             self._headers["Authorization"] = f"Bearer {self.cfg.token}"
+        # Throughput: cache one-time aspects + last-written props; queue MCP batches.
+        self._oneshot_urns: set[str] = set()
+        self._props_cache: dict[str, dict[str, str]] = {}
+        self._open_demand_cache: set[str] = set()
+        self._mcp_queue: list[MetadataChangeProposalWrapper] = []
+        self._batch_depth = 0
+        self._ghost_buffer: list[MetadataChangeProposalWrapper] = []
+        self._ghost_buffer_meta: list[tuple[str, dict[str, str]]] = []
+        self._ghost_batch_size = int(
+            __import__("os").getenv("NULLSPACE_GHOST_EMIT_BATCH", "40")
+        )
+        import atexit
+
+        atexit.register(self.flush_ghost_emits)
 
     @property
     def gms(self) -> str:
@@ -124,14 +138,126 @@ class DataHubClient:
             return
         r.raise_for_status()
 
-    def emit_aspect(self, urn: str, aspect: Any) -> None:
-        """Write one native aspect through the official SDK."""
-        self.graph.emit(MetadataChangeProposalWrapper(entityUrn=urn, aspect=aspect))
+    def emit_aspect(
+        self,
+        urn: str,
+        aspect: Any,
+        *,
+        emit_mode: Any | None = None,
+    ) -> None:
+        """Write one native aspect through the official SDK (or queue if batching)."""
+        from datahub.emitter.rest_emitter import EmitMode
+
+        mcp = MetadataChangeProposalWrapper(entityUrn=urn, aspect=aspect)
+        if self._batch_depth > 0:
+            self._mcp_queue.append(mcp)
+            return
+        mode = emit_mode if emit_mode is not None else EmitMode.SYNC_PRIMARY
+        self.graph.emit(mcp, emit_mode=mode)
+
+    def emit_mcps(
+        self,
+        mcps: list[Any],
+        *,
+        emit_mode: Any | None = None,
+    ) -> None:
+        """Batch-write native aspects — orders of magnitude faster than serial emit."""
+        from datahub.emitter.rest_emitter import EmitMode
+
+        if not mcps:
+            return
+        mode = emit_mode if emit_mode is not None else EmitMode.ASYNC
+        self.graph.emit_mcps(mcps, emit_mode=mode)
+
+    def queue_aspect(self, urn: str, aspect: Any) -> None:
+        """Append an MCP to the current batch (or emit immediately if not batching)."""
+        mcp = MetadataChangeProposalWrapper(entityUrn=urn, aspect=aspect)
+        if self._batch_depth > 0:
+            self._mcp_queue.append(mcp)
+        else:
+            self.emit_mcps([mcp])
+
+    def begin_batch(self) -> None:
+        self._batch_depth += 1
+
+    def flush_batch(self, *, emit_mode: Any | None = None) -> int:
+        """Emit all queued MCPs in one round-trip. Returns count flushed."""
+        from datahub.emitter.rest_emitter import EmitMode
+
+        pending = self._mcp_queue
+        self._mcp_queue = []
+        if not pending:
+            return 0
+        mode = emit_mode if emit_mode is not None else EmitMode.ASYNC
+        self.graph.emit_mcps(pending, emit_mode=mode)
+        return len(pending)
+
+    def end_batch(self, *, emit_mode: Any | None = None) -> int:
+        if self._batch_depth > 0:
+            self._batch_depth -= 1
+        if self._batch_depth == 0:
+            return self.flush_batch(emit_mode=emit_mode)
+        return 0
+
+    def oneshot_done(self, urn: str) -> bool:
+        return urn in self._oneshot_urns
+
+    def mark_oneshot(self, urn: str) -> None:
+        self._oneshot_urns.add(urn)
+
+    def cached_properties(self, urn: str) -> dict[str, str] | None:
+        return self._props_cache.get(urn)
+
+    def remember_properties(self, urn: str, props: dict[str, str]) -> None:
+        self._props_cache[urn] = dict(props)
+
+    def mark_open_demand(self, want_key: str) -> None:
+        self._open_demand_cache.add(want_key)
+
+    def clear_open_demand(self, want_key: str) -> None:
+        self._open_demand_cache.discard(want_key)
+
+    def is_open_demand(self, want_key: str) -> bool:
+        return want_key in self._open_demand_cache
+
+    def buffer_ghost_emits(
+        self, mcps: list[Any], *, urn: str, custom: dict[str, str]
+    ) -> None:
+        """Accumulate ghost MCPs across misses; flush every NULLSPACE_GHOST_EMIT_BATCH."""
+        self._ghost_buffer.extend(mcps)
+        self._ghost_buffer_meta.append((urn, dict(custom)))
+        # Optimistic cache so the next miss on this URN skips GMS prior-read.
+        self.remember_properties(urn, custom)
+        if len(self._ghost_buffer_meta) >= self._ghost_batch_size:
+            self.flush_ghost_emits()
+
+    def flush_ghost_emits(self) -> int:
+        """Emit all buffered ghost MCPs in one round-trip."""
+        from datahub.emitter.rest_emitter import EmitMode
+
+        if not self._ghost_buffer:
+            return 0
+        pending = self._ghost_buffer
+        meta = self._ghost_buffer_meta
+        self._ghost_buffer = []
+        self._ghost_buffer_meta = []
+        self.graph.emit_mcps(pending, emit_mode=EmitMode.SYNC_PRIMARY)
+        for urn, custom in meta:
+            self.remember_properties(urn, custom)
+        return len(pending)
 
     def dataset_custom_properties(self, urn: str) -> dict[str, str]:
+        for buffered_urn, custom in self._ghost_buffer_meta:
+            if buffered_urn == urn:
+                return dict(custom)
+        cached = self._props_cache.get(urn)
+        if cached is not None:
+            return dict(cached)
         props = self.graph.get_aspect(urn, DatasetPropertiesClass)
         if props and props.customProperties:
-            return dict(props.customProperties)
+            result = dict(props.customProperties)
+            self._props_cache[urn] = result
+            return result
         return {}
 
     def get_aspect(self, urn: str, aspect: str) -> dict[str, Any] | None:
