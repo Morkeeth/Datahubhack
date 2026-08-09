@@ -6,7 +6,16 @@ import hashlib
 import json
 from typing import Any
 
+from datahub.emitter.mce_builder import make_assertion_urn
 from datahub.metadata.schema_classes import (
+    AssertionInfoClass,
+    AssertionResultClass,
+    AssertionResultTypeClass,
+    AssertionRunEventClass,
+    AssertionRunStatusClass,
+    AssertionSourceClass,
+    AssertionSourceTypeClass,
+    AssertionTypeClass,
     AuditStampClass,
     CorpUserInfoClass,
     DatasetLineageTypeClass,
@@ -27,6 +36,8 @@ from datahub.metadata.schema_classes import (
     QueryStatementClass,
     QuerySubjectClass,
     QuerySubjectsClass,
+    SchemaAssertionCompatibilityClass,
+    SchemaAssertionInfoClass,
     SchemaFieldClass,
     SchemaFieldDataTypeClass,
     SchemaMetadataClass,
@@ -126,6 +137,10 @@ def emit_ghost(dh: DataHubClient, ghost: Ghost) -> dict[str, Any]:
         custom["nullspace.query_urns"] = prior["nullspace.query_urns"]
     if prior.get("nullspace.builder_plan"):
         custom["nullspace.builder_plan"] = prior["nullspace.builder_plan"]
+    if prior.get("nullspace.builder_receipt"):
+        custom["nullspace.builder_receipt"] = prior["nullspace.builder_receipt"]
+    if prior.get("nullspace.assertion_urn"):
+        custom["nullspace.assertion_urn"] = prior["nullspace.assertion_urn"]
 
     props = DatasetPropertiesClass(
         name=ghost.dataset_name,
@@ -166,6 +181,16 @@ def emit_ghost(dh: DataHubClient, ghost: Ghost) -> dict[str, Any]:
             )
         _emit_schema(dh, ghost)
         _emit_lineage(dh, ghost)
+        assertion_urn = _emit_demand_schema_assertion(dh, ghost)
+        custom["nullspace.assertion_urn"] = assertion_urn
+        dh.emit_aspect(
+            ghost.urn,
+            DatasetPropertiesClass(
+                name=ghost.dataset_name,
+                description=description,
+                customProperties=custom,
+            ),
+        )
 
     witness = dh.solid_witness(ghost.urn)
     if not dh.wait_for_search_urn(ghost.want, ghost.urn):
@@ -261,7 +286,7 @@ def _field_type(native_type: str) -> SchemaFieldDataTypeClass:
     return SchemaFieldDataTypeClass(type=primitive)
 
 
-def _emit_schema(dh: DataHubClient, ghost: Ghost) -> None:
+def _schema_metadata_for_ghost(ghost: Ghost) -> SchemaMetadataClass:
     raw_schema = json.dumps(ghost.schema_fields, sort_keys=True)
     fields = [
         SchemaFieldClass(
@@ -273,7 +298,7 @@ def _emit_schema(dh: DataHubClient, ghost: Ghost) -> None:
         )
         for field in ghost.schema_fields
     ]
-    schema = SchemaMetadataClass(
+    return SchemaMetadataClass(
         schemaName=ghost.dataset_name,
         platform=_PLATFORM_URN,
         version=0,
@@ -284,7 +309,58 @@ def _emit_schema(dh: DataHubClient, ghost: Ghost) -> None:
         lastModified=_audit(),
         dataset=ghost.urn,
     )
-    dh.emit_aspect(ghost.urn, schema)
+
+
+def _emit_schema(dh: DataHubClient, ghost: Ghost) -> None:
+    dh.emit_aspect(ghost.urn, _schema_metadata_for_ghost(ghost))
+
+
+def _emit_demand_schema_assertion(dh: DataHubClient, ghost: Ghost) -> str:
+    """Native DATA_SCHEMA assertion: solid schema matches demand contracts (EXACT)."""
+    assertion_urn = make_assertion_urn(f"nullspace-schema-{ghost.dataset_name}")
+    schema = _schema_metadata_for_ghost(ghost)
+    info = AssertionInfoClass(
+        type=AssertionTypeClass.DATA_SCHEMA,
+        schemaAssertion=SchemaAssertionInfoClass(
+            entity=ghost.urn,
+            schema=schema,
+            compatibility=SchemaAssertionCompatibilityClass.EXACT_MATCH,
+        ),
+        description=(
+            f"Nullspace demand schema for {ghost.want!r}: "
+            f"{len(ghost.schema_fields)} fields must match exactly after solidify"
+        ),
+        source=AssertionSourceClass(type=AssertionSourceTypeClass.EXTERNAL),
+        customProperties={
+            "nullspace.want": ghost.want,
+            "nullspace.demand": str(ghost.demand),
+            "nullspace.origin": "solidify",
+        },
+    )
+    dh.emit_aspect(assertion_urn, info)
+    returned = dh.graph.get_aspect(assertion_urn, AssertionInfoClass)
+    if returned is None or returned.type != AssertionTypeClass.DATA_SCHEMA:
+        raise RuntimeError(
+            "DataHub assertionInfo read-after-write failed: "
+            f"returned {returned!r}"
+        )
+
+    run = AssertionRunEventClass(
+        timestampMillis=now_ms(),
+        runId=f"nullspace-solidify-{ghost.dataset_name}-{now_ms()}",
+        asserteeUrn=ghost.urn,
+        assertionUrn=assertion_urn,
+        status=AssertionRunStatusClass.COMPLETE,
+        result=AssertionResultClass(
+            type=AssertionResultTypeClass.SUCCESS,
+            nativeResults={
+                "fields": ",".join(str(f["name"]) for f in ghost.schema_fields),
+                "demand": str(ghost.demand),
+            },
+        ),
+    )
+    dh.emit_aspect(assertion_urn, run)
+    return assertion_urn
 
 
 def _emit_lineage(dh: DataHubClient, ghost: Ghost) -> None:

@@ -153,8 +153,19 @@ datahub ingest -c infra/datahub/nullspace_demand.yml
 ```
 
 Ghosts carry **structured properties**, **Query** contracts, **Owners from the
-first miss**, and the fulfillment PR in **institutionalMemory**. Merge→solid
-can be driven by webhook: `python3 -m nullspace.webhook` (:8790).
+first miss**, and the fulfillment PR in **institutionalMemory**. Builder plans
+and review receipts live on the ghost URN (`nullspace.builder_plan` /
+`nullspace.builder_receipt`) — delete `/tmp` mid-flight and they still load.
+Solidify emits a native **DATA_SCHEMA** Assertion (exact match) and records
+`nullspace.assertion_urn`. Optional hydrate-only mode:
+
+```bash
+NULLSPACE_STORE=memory python3 -m nullspace.cli dump
+python3 -m nullspace.builder --review-want "your demand"
+```
+
+Merge→solid can be driven by webhook: `python3 -m nullspace.webhook` (:8790).
+Upstream connector sketch: [docs/design/oss-nullspace-demand-source.md](docs/design/oss-nullspace-demand-source.md).
 
 ## Subtraction proof (Law 2)
 

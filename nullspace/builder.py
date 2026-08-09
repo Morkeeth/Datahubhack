@@ -830,7 +830,11 @@ def _write_review_receipt(
     plan: BuildPlan | None,
     result: dict[str, Any],
 ) -> str:
-    """Persist a review receipt. Refusals must not raise — they *are* the result."""
+    """Persist a review receipt on the ghost URN (+ optional file cache).
+
+    Refusals must not raise — they *are* the result. Catalog is source of truth;
+    deleting the local receipt file must not lose a successful build's witness.
+    """
     status = str(result.get("status") or "")
     urn = result.get("urn")
     receipt: dict[str, Any] = {
@@ -864,6 +868,7 @@ def _write_review_receipt(
                     "lineage": witness.get("lineage"),
                     "ownership": witness.get("ownership"),
                     "tags": witness.get("tags"),
+                    "assertion_urn": properties.get("nullspace.assertion_urn"),
                 },
                 "honest_boundary": (
                     "file:// is a local change reference, not a pull request"
@@ -872,6 +877,9 @@ def _write_review_receipt(
                 ),
             }
         )
+
+    _persist_receipt_to_catalog(want, receipt)
+
     _RECEIPT_PATH.parent.mkdir(parents=True, exist_ok=True)
     temp = _RECEIPT_PATH.with_suffix(f".{os.getpid()}.tmp")
     temp.write_text(json.dumps(receipt, indent=2), encoding="utf-8")
@@ -879,12 +887,101 @@ def _write_review_receipt(
     return str(_RECEIPT_PATH)
 
 
-def review_receipt(path: Path) -> dict[str, Any]:
+def _persist_receipt_to_catalog(want: str, receipt: dict[str, Any]) -> None:
+    """Bind the builder receipt to the ghost URN when the ghost already exists."""
+    try:
+        client = DataHubClient()
+        if not client.healthy():
+            return
+    except Exception:  # noqa: BLE001
+        return
+    from datahub.metadata.schema_classes import DatasetPropertiesClass
+    from nullspace.urns import ghost_urn
+
+    urn = ghost_urn(want)
+    props = client.graph.get_aspect(urn, DatasetPropertiesClass)
+    if props is None:
+        return
+    custom = dict(props.customProperties or {})
+    custom["nullspace.builder_receipt"] = json.dumps(receipt, sort_keys=True)
+    client.emit_aspect(
+        urn,
+        DatasetPropertiesClass(
+            name=props.name,
+            description=props.description,
+            customProperties=custom,
+        ),
+    )
+    read_back = client.dataset_custom_properties(urn).get("nullspace.builder_receipt")
+    if read_back != custom["nullspace.builder_receipt"]:
+        raise RuntimeError(
+            f"DataHub builder_receipt read-after-write failed for {urn!r}"
+        )
+
+
+def load_review_receipt(
+    want: str, *, dh: DataHubClient | None = None
+) -> dict[str, Any] | None:
+    """Load the latest builder receipt from the catalog (GMS), then file cache."""
+    client = dh
+    if client is None:
+        try:
+            probe = DataHubClient()
+            client = probe if probe.healthy() else None
+        except Exception:  # noqa: BLE001
+            client = None
+    if client is not None:
+        from nullspace.urns import ghost_urn
+
+        raw = client.dataset_custom_properties(ghost_urn(want)).get(
+            "nullspace.builder_receipt"
+        )
+        if raw:
+            try:
+                parsed = json.loads(raw)
+                if isinstance(parsed, dict):
+                    return parsed
+            except json.JSONDecodeError:
+                pass
+    if _RECEIPT_PATH.exists():
+        try:
+            parsed = json.loads(_RECEIPT_PATH.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError):
+            return None
+        if isinstance(parsed, dict) and _plan_key(str(parsed.get("want", ""))) == _plan_key(
+            want
+        ):
+            return parsed
+    return None
+
+
+def review_receipt(
+    path: Path | None = None, *, want: str | None = None
+) -> dict[str, Any]:
     """Re-read DataHub and show whether the saved builder receipt still holds."""
-    receipt = json.loads(path.read_text(encoding="utf-8"))
+    receipt: dict[str, Any] | None = None
+    source = None
+    if path is not None and path.exists():
+        receipt = json.loads(path.read_text(encoding="utf-8"))
+        source = str(path)
+    elif want:
+        receipt = load_review_receipt(want)
+        source = f"catalog:{want}"
+    elif path is not None:
+        # Path given but missing — try catalog if the path was the default receipt.
+        receipt = None
+        source = str(path)
+
+    if not receipt:
+        return {
+            "receipt": source,
+            "want": want,
+            "datahub_still_matches": False,
+            "refusal": "no receipt found on disk or in catalog",
+        }
     if not receipt.get("urn") or receipt.get("datahub_returned") is None:
         return {
-            "receipt": str(path),
+            "receipt": source,
             "want": receipt.get("want"),
             "decision": receipt.get("decision"),
             "refusal": receipt.get("refusal"),
@@ -903,16 +1000,23 @@ def review_receipt(path: Path) -> dict[str, Any]:
         "lineage": returned_now.get("lineage"),
         "ownership": returned_now.get("ownership"),
         "tags": returned_now.get("tags"),
+        "assertion_urn": current_properties.get("nullspace.assertion_urn"),
     }
+    # Older receipts omit assertion_urn — compare without it when absent.
+    recorded_cmp = dict(recorded)
+    current_cmp = dict(current)
+    if "assertion_urn" not in recorded:
+        current_cmp.pop("assertion_urn", None)
     return {
-        "receipt": str(path),
+        "receipt": source,
         "want": receipt["want"],
         "decision": receipt["decision"],
         "sql_validation": receipt.get("sql_validation"),
-        "datahub_still_matches": current == recorded,
+        "datahub_still_matches": current_cmp == recorded_cmp,
         "datahub_returned_now": current,
         "generated_sql": receipt.get("generated_sql"),
         "honest_boundary": receipt.get("honest_boundary"),
+        "assertion_urn": current_properties.get("nullspace.assertion_urn"),
     }
 
 
@@ -1019,11 +1123,21 @@ def main() -> None:
         "--review",
         type=Path,
         metavar="RECEIPT",
-        help="re-read DataHub and review a prior builder receipt",
+        help="re-read DataHub and review a prior builder receipt file",
+    )
+    parser.add_argument(
+        "--review-want",
+        metavar="WANT",
+        help="review the builder receipt bound to this demand's ghost URN",
     )
     args = parser.parse_args()
-    if args.review:
-        print(json.dumps(review_receipt(args.review), indent=2))
+    if args.review or args.review_want:
+        print(
+            json.dumps(
+                review_receipt(args.review, want=args.review_want),
+                indent=2,
+            )
+        )
         return
     result = asyncio.run(run_builder_agent())
     print("RESULT:")
