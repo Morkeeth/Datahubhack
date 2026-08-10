@@ -39,6 +39,34 @@ infrastructure, the requesters are MCP clients, and the builder is an MCP client
 **Disclosed:** requester identities and warehouse rows are demo traffic. The misses
 behind them are genuine `relation ... does not exist` errors raised by Postgres.
 
+### Re-verified 2026-08-10 22:50, after submission
+
+The table above is a snapshot taken at submission time. Two things have moved since, and
+restating the numbers without saying why would be the exact failure this project is about.
+
+**The harvest was re-run end to end**, against the live warehouse's own log, with a `file`
+sink so the judged catalog was not touched:
+
+```
+docker logs <warehouse> 2> wh.log
+datahub ingest -c harvest.yml     # source: nullspace.ingestion.demand.NullspaceDemandSource
+→ Pipeline finished successfully; produced 5296 events in 3.91 seconds
+→ 2,407 relation-does-not-exist lines · 42 distinct ghost URNs · 1,255 queryProperties
+```
+
+The log lines carry the application that failed — `[app=account-health-bot]` — so
+attribution comes from Postgres, not from anything an agent was asked to send. **No agent
+was modified and no MCP client was involved in that run.** This is the "demand does not
+require adoption" claim below, executed rather than asserted.
+
+**The board's counts are lower than the table above**, and deliberately: six entries were
+instrumentation created while testing the machinery, and they have been hard-deleted by
+URN. Entries 54 → 48, total asks 1,251 → 1,236. Each one is listed with its reason in
+`BOARD-CLEANUP.md`. They were removed because leaving them in inflates the single number
+this product rests on.
+
+**Tests are now 29, not 24.**
+
 ---
 
 ## 3 · THE RECORDING RUN-SHEET
