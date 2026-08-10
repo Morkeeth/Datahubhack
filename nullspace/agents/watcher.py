@@ -135,7 +135,11 @@ def run(interval: int, max_builds: int, once: bool) -> int:
         status = (result or {}).get("status")
         chose = (result or {}).get("want") or target.want
         if status != "solidified":
-            reason = (result or {}).get("reason") or f"status {status}"
+            reason = (
+                (result or {}).get("reason")
+                or (result or {}).get("awaiting")
+                or f"status {status}"
+            )
             if chose in refused:
                 # The watcher decides *when* to build; the builder decides
                 # *what*, and there is currently no way to tell it "not that

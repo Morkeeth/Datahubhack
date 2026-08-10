@@ -283,7 +283,18 @@ def claim_and_build(want: str, ctx: Context) -> dict[str, Any]:
 
     built = build_and_solidify(ns, want, builder_id=builder_id)
     out = built.to_public()
-    out["status"] = "solidified"
+    # Read the status off the ghost instead of asserting it. This line used to be
+    # `out["status"] = "solidified"` unconditionally, so a build that opened a pull
+    # request and correctly left the ghost `claimed` still reported "solidified" —
+    # and the watcher printed `solid · <pr>` while the catalog said claimed, the
+    # schema was empty and no table existed in the warehouse. A caller cannot tell
+    # a real solidify from a claim if the field is a constant.
+    out["status"] = "solidified" if built.state == "solid" else built.state
+    if built.state != "solid":
+        out["awaiting"] = (
+            "pull request is open — merge it, then `nullspace finalize` "
+            "materialises the model and the ghost goes solid"
+        )
     out["builder_id"] = builder_id
     out["identified_by"] = how
     out["builder_urn"] = corpuser_urn(builder_id)
