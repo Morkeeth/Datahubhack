@@ -1,0 +1,41 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "nullspace"
+version = "0.1.0"
+description = "A catalog entry for data that does not exist yet — demand-side metadata for DataHub."
+readme = "README.md"
+license = { text = "Apache-2.0" }
+# mcp requires >=3.10, and stock macOS ships 3.9. Without this bound, `pip install`
+# fails with an unreadable resolver dump instead of saying which Python is needed.
+requires-python = ">=3.10"
+dependencies = [
+  "acryl-datahub>=1.0.0",
+  "datahub-agent-context>=0.1.0",
+  "mcp>=2.0.0",
+  "psycopg[binary]>=3.1.0",
+  "httpx>=0.27.0",
+  "pydantic>=2.0.0",
+  "python-dotenv>=1.0.0",
+  "rich>=13.0.0",
+  "typer>=0.12.0",
+  "fastapi>=0.110.0",
+  "uvicorn>=0.29.0",
+]
+
+[project.optional-dependencies]
+# dbt is pinned <2 so pip cannot resolve Fusion, which has no Postgres adapter and
+# silently degrades `solid` to a CREATE TABLE AS.
+dbt = ["dbt-core>=1.8,<2", "dbt-postgres>=1.8,<1.10"]
+
+[project.scripts]
+nullspace = "nullspace.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["nullspace*"]
+exclude = ["app*", "scripts*", "docs*", "infra*", "deploy*", "examples*"]
+
+[tool.setuptools.package-data]
+nullspace = ["static/*.html"]

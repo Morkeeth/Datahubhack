@@ -27,7 +27,34 @@ if ! curl -sf "$DATAHUB_GMS_URL/health" >/dev/null 2>&1; then
     exit 1
   fi
 else
-  echo "DataHub already healthy at $DATAHUB_GMS_URL"
+  # A healthy GMS on this port is NOT evidence that it belongs to this clone. On a
+  # machine that already runs DataHub, the eval will happily read that instance's
+  # catalog and report a pass built on somebody else's state — which is the one kind
+  # of result this project exists to refuse. Say whose instance it is.
+  # Match on the compose file this clone owns, not on the project name: a stack
+  # started with `-p something-else` is still this clone's stack, and matching by
+  # project name would refuse on the very machine that brought it up.
+  OURS=""
+  if command -v docker >/dev/null 2>&1; then
+    OURS="$(docker ps -q \
+      --filter "label=com.docker.compose.project.config_files=$ROOT/compose.yaml" \
+      --filter "label=com.docker.compose.service=datahub-gms" 2>/dev/null | head -1)"
+  fi
+  if [[ -n "$OURS" ]]; then
+    echo "DataHub already healthy at $DATAHUB_GMS_URL (this clone's stack)"
+  else
+    echo "WARNING: $DATAHUB_GMS_URL is healthy, but it is NOT this clone's compose stack."
+    echo "         Whatever is answering there was already running. Anything you read from"
+    echo "         it — ghosts, demand counts, an eval pass — describes that instance, not a"
+    echo "         fresh run of this repository."
+    echo "         For a trustworthy cold run, stop the other stack, or set"
+    echo "         DATAHUB_GMS_URL to a port this clone owns and re-run."
+    if [[ "${NULLSPACE_ALLOW_FOREIGN_GMS:-0}" != "1" ]]; then
+      echo "REFUSED: set NULLSPACE_ALLOW_FOREIGN_GMS=1 to proceed against it anyway."
+      exit 1
+    fi
+    echo "         NULLSPACE_ALLOW_FOREIGN_GMS=1 — proceeding, results are not a cold run."
+  fi
 fi
 
 # README promises warehouse at localhost:5432 — do not declare the stack ready
