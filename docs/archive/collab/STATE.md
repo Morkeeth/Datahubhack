@@ -3,50 +3,44 @@
 > Every witness row names the **host** it was witnessed on and the command that
 > printed it. Night-run receipts from another host are not reused as truth here.
 
-- **Last updated:** 2026-08-09 ~23:55 UTC by Cursor Lane A
-- **Host:** `cursor`
-- **Phase:** Post-submit improvements shipped (D38 flush, D39 dbt pin); cherry still = Oscar applies RFC #19022
-- **Worker branch:** `cursor/datahub-hack-setup-4c9d`
+- **Last updated:** 2026-08-10 ~10:05 UTC by Cursor Lane A (stranger-cold-run)
+- **Host:** Oscar laptop (`colima`)
+- **Phase:** Stranger cold-clone proven on remapped ports; blockers fixed and
+  pushing to `main`
+- **Worker branch:** `stranger-cold-run` → `main`
 
 ## This turn
 
 | Slice | Status | Witness |
 |---|---|---|
-| SP defs sync before values (no same-batch 422) | ✅ | wiped defs → same-batch failed; sync+fallback creates ghost |
-| customProperties fallback when defs unavailable | ✅ | want `fresh-want-after-sp-fix-*` demand=3 state=ghost |
-| CLI startup registers SP defs | ✅ | `cli._ns` |
-| Builder walks the book / `--want` steer | ✅ | unit: rank + skip/claim lines; shortfall fields |
-| DatasetProperties props-cache refresh after emit | ✅ | `build_and_solidify` → state=solid (was: builder_plan RAW fail) |
-| Stranger cold-clone report | ✅ | `/tmp/nullspace-stranger` — failures listed below (not fixed in that pass) |
+| Fresh clone of `main` @ `b049ac6` | ✅ | `git clone …/nullspace.git ~/tmp/nullspace-stranger-cold` |
+| `install-deps.sh` pins classic dbt | ✅ | `dbt --version` → core 1.12.0 / postgres 1.9.1 (not Fusion) |
+| Remapped compose (live `datahub-hack` untouched) | ✅ | project `stranger-cold`; GMS `:18080` PG `:15432` board `:18787` MCP `:18788` |
+| Substrate ready | ✅ | GMS+warehouse+ingestion **84s** (warm images) |
+| README cold eval (pre-fix) | ❌→fixed | CHECK 5 `status='claimed'` after real PR (MCP honesty); eval now finalizes |
+| Solid table SELECT | ✅ | `ecommerce.ghost_fresh_…` 2 rows via `dbt_run`; MRR ghost 3 rows |
+| `remote_agent.py --query` ×3 → claim → PR → merge → solid | ✅ | PR `#19`; `SELECT *` → enterprise/scaleup/startup MRR |
+| `sources.yml` overwrite bug | ✅ fixed | second claim wiped `trials`; `_merge_source_tables` + test |
+| README example query unfulfillable | ✅ fixed | was `account_id/health_score`; now seeded `segment/mrr` |
+| preflight board `:8787` vs live `:8790` | ✅ fixed | respects `NULLSPACE_BOARD_URL` / `NULLSPACE_BOARD_PORT` |
+| up.sh board port | ✅ fixed | respects `NULLSPACE_BOARD_PORT` |
 
-## Stranger failures (report only — do not fix here)
+## Remap line (only intentional stranger diff)
 
-Clone: `git clone` → `/tmp/nullspace-stranger` from `cursor/datahub-hack-setup-4c9d`. Followed README literally.
+`18080←8080, 19002←9002, 19092←9092, 15432←5432, 18787←8787, 18788←8788`; compose project `stranger-cold`. Live `datahub-hack` on `:8080` left alone.
 
-1. **`bash scripts/install-deps.sh`** — exit 0, but does **not** install `dbt` / `dbt-postgres` and does **not** write `~/.dbt/profiles.yml`. `requirements.txt` has no dbt. Stranger solid without dbt is warehouse fiction risk (D33 discloses `warehouse_ctas` fallback on this host).
-2. **`eval_nullspace.py --cold` CHECK 5** — failed with `builder returned status=None` / `DataHub builder_plan read-after-write failed` until props-cache refresh (D37). Ghost checks passed via SP→customProperties fallback.
-3. **`./scripts/up.sh`** — OK on this host (stack already healthy). Warehouse has all 7 tables from `infra/warehouse/init.sql` (+ test ghost tables).
-4. **`bash scripts/serve.sh`** (no `.venv`) — works (falls back to `python3`); timeout 124 = still running.
-5. **README links** `nullspace-dbt#2`, `datahub#19022` — HTTP 200 anonymous.
+## Honest timing
 
-## Design (wrapped — not shipping)
+- Warm images: substrate **84s** + eval path under **3 min** once finalize is in CHECK 5.
+- Cold Docker pull: **not** under 3 minutes — README now says so.
+- `install-deps` here was **10s** (warm pip cache); a true empty machine is longer.
 
-Comps in `docs/design/board-options-v2.html` + screenshots in `docs/design/options/`.
-Oscar has a separate design idea; **do not merge a board restyle from these comps** until that lands.
-`board.html` stays Darkroom (M1).
+## Still open
 
-## Submission audit
+1. Live public board (`com.morkeeth.nullspace` / `:8790`) was **down** this morning (Colima off; GMS alone unhealthy). Not restarted by this lane.
+2. Durable public hostname — see handback (named Cloudflare tunnel).
+3. P0 RFC #19022 / X clip — unchanged ownership (Oscar/Claude).
 
-Full multi-model report: **`docs/archive/collab/SUBMISSION-AUDIT.md`**  
-Consensus: **SHIP WITH GAPS** — engine real; recording risks are board pollution, `file://` PR, dbt Fusion→CTAS, walk-the-book not in `demo.sh`.
+## Handback
 
-## Still open (post-submit, ~20h)
-
-1. **P0:** Apply RFC polish → green #19022 (`docs/oss/datahub-rfc-19022/APPLY.md`) — Oscar/Claude
-2. **P0:** X clip — `docs/submission/x-clip.md` (use merged `nullspace-dbt#5`, not live `file://`)
-3. Claude Lane B retro into `hack.md`
-4. Plan: `docs/archive/collab/reviews/final-20h-plan.md`
-
-## Handback — Lane B / Oscar
-
-RFC apply + X post. No second DataHub PR. Cursor cannot push `Morkeeth/datahub`.
+Durable hostname cheapest path: Cloudflare **named** tunnel (`cloudflared tunnel create` + DNS CNAME, or stable `*.cfargotunnel.com`) — survives restart; ~10–15 min once `cloudflared login` is done. Quick tunnels will keep minting new hostnames.

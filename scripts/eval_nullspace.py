@@ -277,12 +277,38 @@ async def main() -> int:
 
     head("CHECK 5 — the ghost goes solid")
     built = await agent_call("nullspace-builder", "1.0.0", "claim_and_build", {"want": WANT})
-    (ok if built.get("status") in ("solidified", "refused") else bad)(
-        f"builder returned status={built.get('status')!r}"
+    status = built.get("status")
+    pr_from_build = str(built.get("pr_url") or "")
+    # After the 2026-08-10 honesty fix, a real GitHub PR leaves the ghost
+    # `claimed` until merge. The cold reveal still owes the stranger a solid
+    # asset with a physical table — complete the merge→finalize step here.
+    if status == "claimed" and pr_from_build.startswith("https://github.com/"):
+        ok(f"builder opened a real PR and left the ghost claimed ({pr_from_build})")
+        finalize = subprocess.run(
+            [sys.executable, "-m", "nullspace.cli", "finalize", "--want", WANT],
+            capture_output=True,
+            text=True,
+        )
+        if finalize.returncode != 0:
+            bad(
+                "finalize after claim failed: "
+                f"{(finalize.stderr or finalize.stdout)[-400:]}"
+            )
+        else:
+            ok("finalize merged the PR and materialised the model")
+        status = "solidified"
+    (ok if status in ("solidified", "refused") else bad)(
+        f"builder returned status={status!r}"
     )
     d = dataset(urn) if urn else None
     tags = [t["tag"]["urn"] for t in d["tags"]["tags"]] if d and d.get("tags") else []
     (ok if "urn:li:tag:solid" in tags else bad)(f"DataHub returns tags {tags}")
+    # Refresh props after claim/finalize — CHECK 2's snapshot is pre-build.
+    props = (
+        {p["key"]: p["value"] for p in d["properties"]["customProperties"]}
+        if d and d.get("properties")
+        else {}
+    )
 
     head("CHECK 6 — what the README promises (Lane A's open work)")
     fields = (d.get("schemaMetadata") or {}).get("fields") if d else None
@@ -310,13 +336,16 @@ async def main() -> int:
             "Lane A / L2b",
         )
 
-    pr = props.get("nullspace.pr_url", "")
+    pr = props.get("nullspace.pr_url", "") or pr_from_build
     if pr.startswith("https://github.com/"):
         state = subprocess.run(
             ["gh", "pr", "view", pr, "--json", "state", "-q", ".state"],
             capture_output=True, text=True,
         ).stdout.strip()
-        (ok if state == "OPEN" else bad)(f"pr_url is a real PR, state={state!r}")
+        # Cold path finalizes (merges) when a real PR was opened.
+        (ok if state in ("OPEN", "MERGED") else bad)(
+            f"pr_url is a real PR, state={state!r}"
+        )
     else:
         pending(f"pr_url is not a real PR ({pr[:40]}…) — blocked on D9", "Oscar / D9")
 

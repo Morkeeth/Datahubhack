@@ -68,7 +68,12 @@ async def run(url: str, want: str, agent: str, version: str, query: str | None) 
                 )
                 print("registered the query you meant to run")
                 print(f"  status : {reg.get('status', reg.get('_raw'))}")
-                needs = reg.get("needs") or reg.get("fields") or reg.get("columns")
+                needs = (
+                    reg.get("needs_fields")
+                    or reg.get("needs")
+                    or reg.get("fields")
+                    or reg.get("columns")
+                )
                 print(f"  needs  : {needs}\n")
 
             print("Now watch the board. When enough agents have asked, a builder")

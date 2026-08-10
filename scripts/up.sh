@@ -6,6 +6,8 @@ cd "$ROOT"
 
 export DATAHUB_GMS_URL="${DATAHUB_GMS_URL:-http://localhost:8080}"
 export NULLSPACE_STORE="${NULLSPACE_STORE:-/tmp/nullspace-ghosts.json}"
+BOARD_PORT="${NULLSPACE_BOARD_PORT:-8787}"
+BOARD_URL="http://localhost:${BOARD_PORT}"
 
 if ! command -v docker >/dev/null 2>&1 || ! docker compose version >/dev/null 2>&1; then
   echo "REFUSED: Docker Compose v2 is unavailable; install/start Docker Desktop, then retry."
@@ -69,20 +71,20 @@ if [[ -n "$ingestion_id" ]]; then
   echo "Metadata ingestion finished successfully."
 fi
 
-if curl -sf "http://localhost:8787/api/board" >/dev/null 2>&1; then
-  echo "Nullspace board already healthy at http://localhost:8787"
+if curl -sf "${BOARD_URL}/api/board" >/dev/null 2>&1; then
+  echo "Nullspace board already healthy at ${BOARD_URL}"
 else
-  echo "Starting Nullspace board on :8787 …"
+  echo "Starting Nullspace board on :${BOARD_PORT} …"
   nohup python3 -m uvicorn nullspace.board:app \
-    --host 0.0.0.0 --port 8787 \
+    --host 0.0.0.0 --port "$BOARD_PORT" \
     >/tmp/nullspace-board.log 2>&1 &
   for _ in $(seq 1 20); do
-    curl -sf "http://localhost:8787/api/board" >/dev/null 2>&1 && break
+    curl -sf "${BOARD_URL}/api/board" >/dev/null 2>&1 && break
     sleep 0.5
   done
-  if ! curl -sf "http://localhost:8787/api/board" >/dev/null 2>&1; then
+  if ! curl -sf "${BOARD_URL}/api/board" >/dev/null 2>&1; then
     echo "REFUSED: board did not start; inspect /tmp/nullspace-board.log."
     exit 1
   fi
-  echo "Nullspace board healthy at http://localhost:8787"
+  echo "Nullspace board healthy at ${BOARD_URL}"
 fi

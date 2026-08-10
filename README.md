@@ -20,14 +20,17 @@ blocked, and nobody had to ask again.**
 
 ```bash
 python scripts/remote_agent.py --url <the public MCP url> \
-    --want "customer health score by account" \
+    --want "monthly recurring revenue by segment" \
     --agent your-agent-name \
-    --query "SELECT account_id, health_score FROM {}"
+    --query "SELECT segment, SUM(mrr) AS mrr FROM {} GROUP BY segment"
 ```
 
 Your identity comes from the MCP `clientInfo` handshake, not a field you type, so
 the demand the board shows really is yours. `bash scripts/serve.sh --public`
-prints a live URL for any instance, including your own.
+prints a live URL for any instance, including your own. The `--query` columns
+must exist in the seeded warehouse (`ecommerce.*` in `infra/warehouse/init.sql`)
+— otherwise the builder declines with a named shortfall instead of inventing a
+table.
 
 **This needs a running instance.** <https://nullspace-five.vercel.app> is a frozen
 snapshot of a real catalog — it is there so the numbers are readable at any hour,
@@ -91,9 +94,10 @@ Install the Python tooling:
 bash scripts/install-deps.sh
 ```
 
-## Cold reveal (&lt; 3 minutes)
+## Cold reveal (&lt; 3 minutes once images are local)
 
-From a clean clone:
+From a clean clone, with Docker images already pulled (first `compose up` on a
+cold machine is dominated by image download and is often 5–10 minutes):
 
 ```bash
 # Prerequisites: Docker Desktop, Docker Compose v2, Python 3.11+
@@ -106,10 +110,10 @@ python3 scripts/eval_nullspace.py --cold
 open http://localhost:8787
 ```
 
-The warehouse rows and requester-agent identities are disclosed demo data. The
-proof is not staged: the eval reads schema, lineage, ownership, demand, and tags
-back from DataHub. Resolution history is written into dataset properties on the
-solid asset; open the dataset in DataHub to read it.
+Witnessed on a clean clone with warm images (2026-08-10): substrate ready in
+~84s, eval to solid (including merge→finalize when `gh` can open a real PR) in
+under 3 minutes wall-clock from `compose up`. First-time image pulls are not
+counted in that number — say so if you film a cold Docker cache.
 
 ## Watch the builder decide
 

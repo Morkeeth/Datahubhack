@@ -7,7 +7,7 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 
 GMS="${DATAHUB_GMS_URL:-http://localhost:8080}"
-BOARD="${NULLSPACE_BOARD_URL:-http://localhost:8787}"
+BOARD="${NULLSPACE_BOARD_URL:-http://localhost:${NULLSPACE_BOARD_PORT:-8787}}"
 FAIL=0
 
 say() { printf '%s\n' "$*"; }
@@ -25,7 +25,7 @@ fi
 
 if curl -sf "$BOARD/api/board" >/dev/null; then
   ok "board reachable at $BOARD"
-  python3 - <<'PY' || true
+  NULLSPACE_BOARD_URL="$BOARD" python3 - <<'PY' || true
 import json, os, urllib.request
 board = os.environ.get("NULLSPACE_BOARD_URL", "http://localhost:8787")
 data = json.load(urllib.request.urlopen(board + "/api/board", timeout=5))
@@ -39,7 +39,7 @@ if n > 20:
     print("    WARN board is dirty (total>20) — run: python3 -m nullspace.cli reset")
 PY
 else
-  bad "board not reachable at $BOARD"
+  bad "board not reachable at $BOARD (set NULLSPACE_BOARD_URL if the live board is not on :8787)"
 fi
 
 if command -v dbt >/dev/null 2>&1; then

@@ -47,6 +47,7 @@ Status values: `PROPOSED` · `DECIDED` · `OPEN` · `SUPERSEDED`.
 | D37 | 2026-08-09 | After emitting `DatasetProperties`, refresh `_props_cache[urn]` so read-after-write of `nullspace.builder_plan` / contracts cannot see a stale empty map. | **DECIDED & verified on host `cursor`** | Cursor Lane A | cold eval CHECK 5; `build_and_solidify` → solid |
 | D38 | 2026-08-09 | MCP `find_dataset` uses one `DataHubClient` for search+write and flushes ghost emits before return. Split clients + atexit-only flush hid demand from the board on long-lived sessions. | **DECIDED & verified on host `cursor`** | Cursor Lane A | flush→GMS demand=3; board within 2s |
 | D39 | 2026-08-09 | Pin `dbt-core>=1.8,<2` (and matching `dbt-postgres`) in install-deps + requirements so strangers do not get Fusion without a Postgres adapter. | **DECIDED** | Cursor Lane A | preflight rejects Fusion |
+| D40 | 2026-08-10 | Stranger cold path after MCP claimed-honesty: cold eval finalizes (merge→dbt→solid) when `claim_and_build` returns `claimed` with an https PR. `write_dbt_model` unions `sources.yml` tables. README remote example uses seeded `segment/mrr`. preflight/up respect `NULLSPACE_BOARD_PORT`/`URL`. Cold-reveal &lt;3min claim is warm-images only. | **DECIDED & verified on host Oscar laptop** | Cursor Lane A | stranger-cold-run; PRs #18/#19; SELECT receipts |
 
 ## Open items (not yet decisions)
 

@@ -353,20 +353,37 @@ def plan_for_demand(want: str, ns: Nullspace | None = None) -> BuildPlan:
     )
 
 
-def write_dbt_model(ghost: Ghost, repo: Path, plan: BuildPlan) -> Path:
-    models = repo / "models"
-    models.mkdir(parents=True, exist_ok=True)
-    sources = models / "sources.yml"
-    table_lines = "".join(f"      - name: {table}\n" for table in plan.all_tables())
-    sources.write_text(
+def _merge_source_tables(sources_path: Path, schema: str, tables: list[str]) -> None:
+    """Union ``tables`` into sources.yml — never wipe siblings from earlier claims.
+
+    A local ``dbt_project/`` accumulates one model per claimed ghost. Overwriting
+    sources.yml with only the latest plan's tables makes ``dbt run --select`` for
+    the new model fail compilation on older models whose sources disappeared.
+    """
+    existing: set[str] = set()
+    if sources_path.exists():
+        for line in sources_path.read_text(encoding="utf-8").splitlines():
+            match = re.match(r"^\s+-\s+name:\s+(\S+)\s*$", line)
+            if match and match.group(1) != "warehouse_source":
+                existing.add(match.group(1))
+    merged = sorted(existing | {t for t in tables if t})
+    table_lines = "".join(f"      - name: {table}\n" for table in merged)
+    sources_path.write_text(
         "version: 2\n"
         "sources:\n"
         "  - name: warehouse_source\n"
-        f"    schema: {plan.source_schema}\n"
+        f"    schema: {schema}\n"
         "    tables:\n"
         f"{table_lines}",
         encoding="utf-8",
     )
+
+
+def write_dbt_model(ghost: Ghost, repo: Path, plan: BuildPlan) -> Path:
+    models = repo / "models"
+    models.mkdir(parents=True, exist_ok=True)
+    sources = models / "sources.yml"
+    _merge_source_tables(sources, plan.source_schema, plan.all_tables())
     out = models / f"{ghost.dataset_name}.sql"
     rendered_sql = (
         plan.model_sql.format(
