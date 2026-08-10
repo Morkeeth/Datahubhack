@@ -1,0 +1,261 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Nullspace — how a ghost becomes a table</title>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@200;400;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --ground:#14171B; --bone:#E9E7E1; --slate:#333B45; --slate-lit:#4A545F;
+  --dim:#858C96; --dimmer:#5B626C; --rule:#242A31; --ice:#7FB3D0;
+  --sans:"IBM Plex Sans",system-ui,sans-serif;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html{-webkit-text-size-adjust:100%;overflow-x:hidden}
+body{background:var(--ground);color:var(--bone);font:200 17px/1.62 var(--sans);
+  -webkit-font-smoothing:antialiased;padding-bottom:110px}
+.in{max-width:1120px;margin:0 auto;padding:0 40px;min-width:0}
+.lab{font-size:10px;font-weight:600;line-height:1;letter-spacing:.2em;text-transform:uppercase;color:var(--dimmer)}
+.n{font-variant-numeric:tabular-nums;font-weight:200;letter-spacing:-.045em}
+b{font-weight:600}
+a{color:var(--bone);text-underline-offset:3px}
+
+header{border-bottom:1px solid var(--rule)}
+header .in{display:flex;justify-content:space-between;gap:20px;flex-wrap:wrap;padding:22px 40px}
+
+.say{padding:clamp(70px,12vh,132px) 0 0}
+h1{font-weight:200;font-size:clamp(28px,4.6vw,54px);line-height:1.14;letter-spacing:-.035em;max-width:20ch}
+h1 em{font-style:normal;color:var(--dim)}
+.say p{margin-top:22px;max-width:58ch;color:var(--dim);font-size:18px}
+
+/* ---- the four beats ---------------------------------------------------- */
+.beat{min-width:0;padding:clamp(58px,9vh,104px) 0 0;border-top:1px solid var(--rule);margin-top:clamp(58px,9vh,104px)}
+.beat:first-of-type{border-top:0;margin-top:0}
+.beat .lab{display:block;margin-bottom:20px}
+.beat h2{font-weight:200;font-size:clamp(22px,2.7vw,32px);line-height:1.22;letter-spacing:-.03em;max-width:26ch}
+.beat p{margin-top:18px;max-width:58ch;color:var(--dim)}
+.beat .stage{margin-top:34px}
+
+/* three agents, three separate contexts */
+.ctx{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:2px}
+.ctx > div{border:1px solid var(--rule);padding:20px 18px;min-height:118px;
+  opacity:0;transform:translateY(8px);transition:opacity .22s ease-out,transform .22s ease-out}
+.seen .ctx > div{opacity:1;transform:none}
+.seen .ctx > div:nth-child(2){transition-delay:.06s}
+.seen .ctx > div:nth-child(3){transition-delay:.12s}
+.ctx .who{font-size:13px;color:var(--dim);font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+.ctx .miss{margin-top:14px;font-size:14px;color:var(--dimmer)}
+
+/* the demand counter */
+.count{display:flex;align-items:baseline;gap:18px}
+.count .big{font-size:clamp(56px,9vw,104px);line-height:.9}
+.count .unit{color:var(--dim);font-size:15px;max-width:24ch}
+
+/* the plan */
+.plan{border:1px solid var(--rule);padding:24px 22px;min-width:0;overflow-x:auto}
+.plan code{display:block;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
+  font-size:13.5px;line-height:1.75;color:var(--bone);white-space:pre;overflow-x:auto}
+.plan .meta{margin-top:16px;font-size:13px;color:var(--dimmer)}
+
+/* THE one dramatic animation: the hollow mark fills */
+.axis{display:flex;align-items:flex-end;gap:2px;height:164px;overflow:hidden}
+.t{flex:1 1 0;min-width:0;background:var(--slate);height:22%}
+.t.f{background:transparent;height:100%;box-shadow:inset 0 0 0 1px var(--bone)}
+.t.fill{position:relative;overflow:hidden}
+.t.fill::after{content:"";position:absolute;left:0;right:0;bottom:0;height:0;
+  background:var(--ice);transition:height 1.15s cubic-bezier(.22,.61,.36,1)}
+.filled .t.fill::after{height:100%}
+.baseline{height:1px;background:var(--rule)}
+.cap{display:flex;justify-content:space-between;gap:18px;flex-wrap:wrap;margin-top:15px;
+  font-size:10px;font-weight:600;letter-spacing:.16em;text-transform:uppercase;color:var(--dimmer)}
+.cap .mid{color:var(--dim);font-weight:400;letter-spacing:.1em}
+
+/* the receipt */
+.receipt{margin-top:34px;border:1px solid var(--rule);overflow-x:auto}
+.receipt .hd{padding:14px 20px;border-bottom:1px solid var(--rule)}
+table{width:100%;min-width:460px;border-collapse:collapse;font-variant-numeric:tabular-nums}
+th,td{text-align:left;padding:13px 20px;font-size:14.5px;font-weight:200}
+th{font-size:10px;font-weight:600;letter-spacing:.16em;text-transform:uppercase;color:var(--dimmer)}
+tbody tr{border-top:1px solid var(--rule)}
+td.num{text-align:right;color:var(--bone)}
+
+footer{margin-top:clamp(70px,11vh,120px);border-top:1px solid var(--rule)}
+footer .in{padding:26px 40px;display:flex;justify-content:space-between;gap:18px;flex-wrap:wrap}
+footer p{color:var(--dimmer);font-size:14px;max-width:52ch}
+
+@media (max-width:720px){
+  .in{padding:0 22px}
+  header .in,footer .in{padding-left:22px;padding-right:22px}
+  .ctx{grid-template-columns:1fr}
+  .axis{height:120px}
+}
+@media (prefers-reduced-motion:reduce){
+  *{transition:none!important}
+  .t.fill::after{height:100%}
+  .ctx > div{opacity:1;transform:none}
+}
+</style>
+</head>
+<body>
+
+<header><div class="in">
+  <span class="lab">Nullspace</span>
+  <span class="lab"><a href="/">the demand board →</a></span>
+</div></header>
+
+<main class="in">
+
+  <section class="say">
+    <h1>Three agents asked for the same table. <em>None of them could know that.</em></h1>
+    <p>Every step below happened on 10 August 2026, on a running DataHub. The numbers,
+      the names, the pull request and the rows are read from that instance. Nothing here
+      is an illustration of what could happen.</p>
+  </section>
+
+  <section class="beat" data-reveal>
+    <span class="lab">01 · The miss</span>
+    <h2>A search that returns nothing leaves no trace.</h2>
+    <p>Three agents, in three separate contexts, searched the catalog for revenue by
+      segment. Each found nothing and stopped. Today that is where it ends: no ticket,
+      no record, and no way for any of them to learn that the other two wanted it too.</p>
+    <div class="stage">
+      <div class="ctx">
+        <div><span class="who">revenue-copilot-1.0.0</span><div class="miss">no non-ghost dataset matched</div></div>
+        <div><span class="who">finance-agent-2.3.1</span><div class="miss">no non-ghost dataset matched</div></div>
+        <div><span class="who">board-deck-writer-0.9.0</span><div class="miss">no non-ghost dataset matched</div></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="beat" data-reveal>
+    <span class="lab">02 · The record</span>
+    <h2>Nullspace keeps the miss instead.</h2>
+    <p>Each miss creates or increments a <b>ghost</b> — a real DataHub dataset URN tagged
+      <b>ghost</b>, holding the phrase that was wanted and an edge back to every agent that
+      asked. The three searches converge because they resolve to the same URN, so the
+      third agent is the first evidence that this is not one person's problem.</p>
+    <div class="stage count">
+      <span class="big n" id="dem">0</span>
+      <span class="unit">independent agents asked, in three contexts that never met</span>
+    </div>
+  </section>
+
+  <section class="beat" data-reveal>
+    <span class="lab">03 · The claim</span>
+    <h2>A builder agent reads the demand and writes the model.</h2>
+    <p>At the threshold a builder agent claims the ghost. It reads the queries the three
+      requesters actually meant to run, infers the grain from them, checks the warehouse
+      for columns that can satisfy it, and writes dbt. It refuses any ghost whose fields
+      no warehouse column can serve, and says which field is missing.</p>
+    <div class="stage plan">
+<code>select
+    "segment",
+    "month",
+    sum("mrr") as mrr,
+    sum("churned_mrr") as churned_mrr
+from {{ source('warehouse_source', 'revenue_events') }}
+group by segment, month</code>
+      <div class="meta">grain = {segment, month} · measures summed from revenue_events ·
+        opened as <a href="https://github.com/Morkeeth/nullspace-dbt/pull/17">nullspace-dbt #17</a></div>
+    </div>
+  </section>
+
+  <section class="beat" data-reveal id="fillbeat">
+    <span class="lab">04 · The fill</span>
+    <h2>On merge, the hollow mark becomes a table.</h2>
+    <p>Each mark below is one ghost in the catalog. Hollow means nobody has built it. When
+      the pull request merges, dbt runs and the model materialises — and only then does
+      the record change state. If dbt fails, the write is refused and the mark stays
+      hollow. Solid is a thing that was read back, not a label that was applied.</p>
+    <div class="stage">
+      <div class="axis" id="axis"></div>
+      <div class="baseline"></div>
+      <div class="cap">
+        <span>GHOST 018</span>
+        <span class="mid">HOLLOW = NOT BUILT YET</span>
+        <span>MONTHLY RECURRING REVENUE BY SEGMENT</span>
+      </div>
+    </div>
+
+    <div class="receipt">
+      <div class="hd"><span class="lab">Read back from the warehouse after the merge</span></div>
+      <table>
+        <thead><tr><th>segment</th><th>month</th><th class="num" style="text-align:right">mrr</th><th class="num" style="text-align:right">churned_mrr</th></tr></thead>
+        <tbody>
+          <tr><td>scaleup</td><td>2026-08</td><td class="num">32000.00</td><td class="num">1200.00</td></tr>
+          <tr><td>enterprise</td><td>2026-08</td><td class="num">68000.00</td><td class="num">2500.00</td></tr>
+          <tr><td>startup</td><td>2026-08</td><td class="num">12500.00</td><td class="num">500.00</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p style="margin-top:22px">The three agents that asked are now the owners of the table
+      they caused to exist, and the demand edges stay as provenance. Nobody had to ask
+      again.</p>
+  </section>
+
+</main>
+
+<footer><div class="in">
+  <p>Every figure on this page was read from a running DataHub v1.7.0 on 10 August 2026.
+    The one thing this page cannot show you is the forty-two ghosts still hollow — for
+    those, nobody has built anything yet.</p>
+  <span class="lab"><a href="/">the demand board →</a></span>
+</div></footer>
+
+<script>
+// Reveal each beat once, on entry. 150-300ms, no bounce.
+var io = new IntersectionObserver(function(es){
+  es.forEach(function(e){ if(e.isIntersecting){ e.target.classList.add('seen'); io.unobserve(e.target); } });
+}, {threshold:.25});
+document.querySelectorAll('[data-reveal]').forEach(function(el){ io.observe(el); });
+
+// Beat 02: the count ticks to the real demand, 3.
+var demEl = document.getElementById('dem');
+var demIO = new IntersectionObserver(function(es){
+  es.forEach(function(e){
+    if(!e.isIntersecting) return;
+    demIO.unobserve(e.target);
+    var n = 0, target = 3;
+    var t = setInterval(function(){ n++; demEl.textContent = n; if(n >= target) clearInterval(t); }, 260);
+  });
+}, {threshold:.5});
+demIO.observe(demEl);
+
+// Beat 04: 24 marks, one hollow — the one the page has been following.
+// Solid bar heights are the real top-24 demand counts read from the live board,
+// scaled to the tallest. The hollow mark is drawn full height, as on the board:
+// a ghost has no size yet, so it is shown as an outline of the whole slot.
+var demands = [48,46,43,42,42,42,40,38,38,38,36,36,36,36,36,34,34,34,32,32,32,30,28,28];
+var max = Math.max.apply(null, demands);
+var axis = document.getElementById('axis');
+demands.forEach(function(d, i){
+  var b = document.createElement('div');
+  b.className = 't' + (i === 17 ? ' f fill' : '');
+  b.style.height = i === 17 ? '100%' : Math.max(8, Math.round(d / max * 100)) + '%';
+  axis.appendChild(b);
+});
+function doFill(){ axis.classList.add('filled'); }
+var fillBeat = document.getElementById('fillbeat');
+if('IntersectionObserver' in window){
+  var fillIO = new IntersectionObserver(function(es){
+    es.forEach(function(e){
+      if(!e.isIntersecting) return;
+      fillIO.unobserve(e.target);
+      setTimeout(doFill, 700);
+    });
+  }, {threshold:.6});
+  fillIO.observe(fillBeat);
+}
+// The fill is the one thing this page exists to show. If the observer never
+// fires — an old browser, a very tall viewport, a headless capture — fill it
+// anyway once the section is on screen, rather than leave the page silent.
+setTimeout(function(){
+  if(axis.classList.contains('filled')) return;
+  var r = fillBeat.getBoundingClientRect();
+  if(r.top < window.innerHeight && r.bottom > 0) doFill();
+}, 2200);
+</script>
+</body>
+</html>

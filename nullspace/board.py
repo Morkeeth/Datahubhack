@@ -358,6 +358,28 @@ def order_book_page() -> str:
     )
 
 
+@app.get("/how", response_class=HTMLResponse)
+def how() -> str:
+    """The mechanism, explained once, for a reader who has never seen this.
+
+    The board shows state and assumes you know what a ghost is. This page does not
+    assume that. Every figure on it was read from a running instance on 2026-08-10
+    and is therefore fixed — it explains one real ghost end to end rather than
+    re-rendering whatever the catalog holds right now.
+    """
+    return (Path(__file__).parent / "static" / "how.html").read_text(encoding="utf-8")
+
+
+@app.get("/reel", response_class=HTMLResponse)
+def reel() -> str:
+    """The same story as /how, self-playing in one screen, for a share.
+
+    Deterministic: every visual is a pure function of the timeline position, so a
+    capture of frame N is identical on every run. That is what makes it recordable.
+    """
+    return (Path(__file__).parent / "static" / "reel.html").read_text(encoding="utf-8")
+
+
 @app.get("/", response_class=HTMLResponse)
 def index() -> str:
     return (Path(__file__).parent / "static" / "board.html").read_text(encoding="utf-8")

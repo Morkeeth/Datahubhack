@@ -1,0 +1,201 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Nullspace — the loop, in one screen</title>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@200;400;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --ground:#14171B; --bone:#E9E7E1; --slate:#333B45;
+  --dim:#858C96; --dimmer:#5B626C; --rule:#242A31; --ice:#7FB3D0;
+  --sans:"IBM Plex Sans",system-ui,sans-serif;
+  --mono:ui-monospace,SFMono-Regular,Menlo,monospace;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--ground);color:var(--bone);font:200 17px/1.6 var(--sans);
+  -webkit-font-smoothing:antialiased;display:grid;place-items:center;min-height:100vh}
+
+#stage{position:relative;width:1280px;height:720px;background:var(--ground);
+  overflow:hidden;padding:56px 72px;display:flex;flex-direction:column}
+.lab{font-size:11px;font-weight:600;letter-spacing:.2em;text-transform:uppercase;color:var(--dimmer)}
+.n{font-variant-numeric:tabular-nums;font-weight:200;letter-spacing:-.045em}
+
+.top{display:flex;justify-content:space-between;align-items:baseline;
+  border-bottom:1px solid var(--rule);padding-bottom:16px;flex:0 0 auto}
+#step{color:var(--dim)}
+
+.body{flex:1 1 auto;position:relative;margin-top:40px}
+.scene{position:absolute;inset:0;opacity:0}
+
+h2{font-weight:200;font-size:40px;line-height:1.16;letter-spacing:-.035em;max-width:24ch}
+h2 em{font-style:normal;color:var(--dim)}
+.sub{margin-top:16px;color:var(--dim);font-size:17px;max-width:62ch}
+
+/* A — three contexts */
+.ctx{display:grid;grid-template-columns:repeat(3,1fr);gap:2px;margin-top:44px}
+.ctx > div{border:1px solid var(--rule);padding:22px 20px;min-height:132px}
+.who{font-family:var(--mono);font-size:14px;color:var(--dim)}
+.miss{margin-top:16px;font-size:14.5px;color:var(--dimmer)}
+
+/* B — the record */
+.rec{margin-top:40px;border-top:1px solid var(--rule);padding-top:28px;
+  display:flex;align-items:baseline;gap:26px}
+.rec .big{font-size:104px;line-height:.86}
+.rec .side{color:var(--dim);font-size:16px;max-width:30ch}
+.urn{margin-top:26px;font-family:var(--mono);font-size:13px;color:var(--dimmer);
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+
+/* C — the plan */
+.plan{margin-top:34px;border:1px solid var(--rule);padding:24px 24px}
+.plan code{display:block;font-family:var(--mono);font-size:15px;line-height:1.75;white-space:pre}
+.plan .meta{margin-top:18px;font-size:14px;color:var(--dimmer)}
+
+/* D — the fill */
+.axis{display:flex;align-items:flex-end;gap:3px;height:180px;margin-top:38px}
+.t{flex:1 1 0;background:var(--slate)}
+.t.f{background:transparent;height:100%;box-shadow:inset 0 0 0 1px var(--bone);position:relative;overflow:hidden}
+.t.f i{position:absolute;left:0;right:0;bottom:0;height:0;background:var(--ice);display:block}
+.cap{display:flex;justify-content:space-between;margin-top:14px}
+.rows{margin-top:26px;width:100%;border-collapse:collapse;font-variant-numeric:tabular-nums}
+.rows th{font-size:11px;font-weight:600;letter-spacing:.16em;text-transform:uppercase;
+  color:var(--dimmer);text-align:left;padding:10px 0}
+.rows td{font-size:17px;font-weight:200;padding:11px 0;border-top:1px solid var(--rule)}
+.rows td.r,.rows th.r{text-align:right}
+
+/* E — the close */
+.close{display:flex;flex-direction:column;justify-content:center;height:100%}
+.close h2{font-size:46px;max-width:20ch}
+.close .url{margin-top:34px;font-family:var(--mono);font-size:15px;color:var(--dim)}
+</style>
+</head>
+<body>
+
+<div id="stage">
+  <div class="top"><span class="lab">Nullspace</span><span class="lab" id="step"></span></div>
+
+  <div class="body">
+
+    <section class="scene" id="sA">
+      <h2>Three agents searched for the same table. <em>None of them could know that.</em></h2>
+      <div class="ctx">
+        <div><div class="who">revenue-copilot-1.0.0</div><div class="miss">no non-ghost dataset matched</div></div>
+        <div><div class="who">finance-agent-2.3.1</div><div class="miss">no non-ghost dataset matched</div></div>
+        <div><div class="who">board-deck-writer-0.9.0</div><div class="miss">no non-ghost dataset matched</div></div>
+      </div>
+    </section>
+
+    <section class="scene" id="sB">
+      <h2>The catalog kept the miss.</h2>
+      <p class="sub">A real DataHub entry for a table nobody has built, holding the phrase
+        that was wanted and an edge back to every agent that asked.</p>
+      <div class="rec">
+        <span class="big n" id="cnt">0</span>
+        <span class="side">independent agents asked, in three contexts that never met</span>
+      </div>
+      <div class="urn">urn:li:dataset:(urn:li:dataPlatform:nullspace,ghost_monthly_recurring_revenue_by_segment,PROD)</div>
+    </section>
+
+    <section class="scene" id="sC">
+      <h2>A builder agent read the demand and wrote the model.</h2>
+      <div class="plan">
+<code>select "segment", "month",
+       sum("mrr") as mrr,
+       sum("churned_mrr") as churned_mrr
+from {{ source('warehouse_source', 'revenue_events') }}
+group by segment, month</code>
+        <div class="meta">grain = {segment, month}, inferred from the queries the three
+          requesters meant to run · opened as nullspace-dbt #17</div>
+      </div>
+    </section>
+
+    <section class="scene" id="sD">
+      <h2>On merge, the hollow mark became a table.</h2>
+      <div class="axis" id="axis"></div>
+      <div class="cap"><span class="lab">Ghost 018</span><span class="lab" id="capR">Hollow = not built yet</span></div>
+      <table class="rows" id="rows">
+        <thead><tr><th>segment</th><th>month</th><th class="r">mrr</th><th class="r">churned_mrr</th></tr></thead>
+        <tbody>
+          <tr><td>scaleup</td><td>2026-08</td><td class="r">32000.00</td><td class="r">1200.00</td></tr>
+          <tr><td>enterprise</td><td>2026-08</td><td class="r">68000.00</td><td class="r">2500.00</td></tr>
+          <tr><td>startup</td><td>2026-08</td><td class="r">12500.00</td><td class="r">500.00</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section class="scene close" id="sE">
+      <h2>The three agents that asked now own the table <em>they caused to exist.</em></h2>
+      <p class="sub">Nobody had to ask again.</p>
+      <div class="url">github.com/Morkeeth/nullspace</div>
+    </section>
+
+  </div>
+</div>
+
+<script>
+// Real top-24 demand counts read from the live board on 10 Aug 2026.
+var DEMANDS=[48,46,43,42,42,42,40,38,38,38,36,36,36,36,36,34,34,34,32,32,32,30,28,28];
+var GH=17; // the ghost this reel follows, drawn hollow
+var axis=document.getElementById('axis'), max=Math.max.apply(null,DEMANDS), fillEl;
+DEMANDS.forEach(function(d,i){
+  var b=document.createElement('div');
+  if(i===GH){ b.className='t f'; b.innerHTML='<i></i>'; }
+  else { b.className='t'; b.style.height=Math.round(d/max*100)+'%'; }
+  axis.appendChild(b);
+});
+fillEl=axis.children[GH].firstChild;
+
+var SC=[
+  {el:'sA', a:0.000, b:0.200, step:'01 · the miss'},
+  {el:'sB', a:0.200, b:0.395, step:'02 · the record'},
+  {el:'sC', a:0.395, b:0.575, step:'03 · the claim'},
+  {el:'sD', a:0.575, b:0.870, step:'04 · the fill'},
+  // The close does not fade out. It is the last thing on screen before the
+  // loop restarts, and a three-line sentence needs longer than a beat to read.
+  {el:'sE', a:0.870, b:1.001, step:'', hold:true}
+];
+function seg(t,a,b){ return Math.max(0, Math.min(1, (t-a)/(b-a))); }
+function ease(x){ return 1-Math.pow(1-x,3); }
+
+var rowsEl=document.getElementById('rows'), cntEl=document.getElementById('cnt');
+
+window.setFrame=function(t){
+  SC.forEach(function(s){
+    var el=document.getElementById(s.el), on=(t>=s.a && t<s.b);
+    var p=seg(t,s.a,Math.min(s.b,s.a+0.045));          // 4.5% of timeline to appear
+    var q=s.hold ? 1 : 1-seg(t,s.b-0.030,s.b);          // 3% to leave
+    el.style.opacity = on ? (Math.min(p,q)).toFixed(3) : 0;
+    if(on) document.getElementById('step').textContent=s.step;
+  });
+
+  // 02 — the counter reaches the real demand, 3
+  var pB=seg(t,0.230,0.340);
+  cntEl.textContent = Math.min(3, Math.floor(pB*3.999));
+
+  // 04 — the one dramatic move: the hollow mark fills
+  var pF=seg(t,0.640,0.730);
+  fillEl.style.height = (ease(pF)*100).toFixed(2)+'%';
+
+  // the rows arrive only once the table is real
+  rowsEl.style.opacity = seg(t,0.735,0.775).toFixed(3);
+
+  // The caption must stop saying "not built yet" the moment it is built.
+  document.getElementById('capR').textContent =
+    pF >= 1 ? 'Solid · 3 rows in the warehouse' : 'Hollow = not built yet';
+};
+
+// Autoplay when opened by a human; the capture script calls setFrame directly.
+if(!/[?&]still/.test(location.search)){
+  var DUR=18000, t0=null;
+  (function loop(ts){
+    if(t0===null) t0=ts;
+    var t=((ts-t0)%DUR)/DUR;
+    window.setFrame(t);
+    requestAnimationFrame(loop);
+  })(performance.now());
+} else {
+  window.setFrame(0);
+}
+</script>
+</body>
+</html>

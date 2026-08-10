@@ -41,3 +41,4 @@ tmp/
 
 # Local clone of the public fulfillment remote (never commit)
 /dbt_project/
+CURSOR-PROMPT-*.md
