@@ -10,34 +10,8 @@
 /* ==========================================================================
    INSTRUMENT — the order book
    --------------------------------------------------------------------------
-   TYPE — ONE interface typeface: IBM Plex Sans, three weights (200/400/600).
-   Labels are the same face uppercase at 10px with wide tracking, not a second
-   family. Mono appears only on the SQL, because that content IS code; if the
-   queries go, the mono goes with them.
-
-   COLOUR — nothing on this page is wrong, so nothing on this page is red.
-   Demand that has not been filled is not a fault. It is the measurement.
-
-     GROUND   the instrument's own quiet
-     BONE     asked for, and still not built
-     SLATE    asked for, and built
-     ICE      confined to ONE region — "out of range" — the wants the builder
-              examined and could not satisfy from this warehouse. Not danger:
-              the instrument looked and could not see a way. Ice anywhere else
-              on this page is a bug.
-
-   GRAPHS — every graph is countable marks. One mark is one agent that asked.
-   Tall = still waiting. No curves, no library, no number you cannot check by
-   eye. The exact figure is printed beside every strip.
-
-   NUMBERS — all read live from a running DataHub at /api/order-book:
-     demand      nullspace.demand on the ghost URN
-     requesters  ownership aspect, falling back to nullspace.requesters
-     open since  earliest at_ms in nullspace.resolution
-     schema      schemaMetadata · upstream  lineage(UPSTREAM)
-     queries     /api/unblocked — the one figure that is not metadata. It is
-                 the registered queries executed in a READ ONLY transaction,
-                 because "no longer blocked" is a claim only a query settles.
+   Same signature as the demand board: hollow marks for agents waiting on a
+   missing table; filled marks once it exists. Mono only on SQL.
 ========================================================================== */
 :root{
   --ground:#14171B; --bone:#E9E7E1; --slate:#333B45; --slate-lit:#4A545F;
@@ -60,7 +34,8 @@ header .in{display:flex;justify-content:space-between;gap:20px;flex-wrap:wrap;pa
 .say{padding:clamp(70px,12vh,132px) 0 0}
 h1{font-weight:200;font-size:clamp(28px,4.6vw,54px);line-height:1.14;letter-spacing:-.035em;max-width:22ch}
 h1 em{font-style:normal;color:var(--dim)}
-.say p{margin-top:26px;max-width:56ch;color:var(--dim);font-size:18px}
+.say p{margin-top:22px;max-width:58ch;color:var(--dim);font-size:18px}
+.say .def{margin-top:18px;max-width:58ch;color:var(--bone);font-size:17px;font-weight:400}
 
 .g{padding:clamp(58px,9vh,100px) 0 0}
 .g > .lab{display:block;margin-bottom:20px}
@@ -68,32 +43,61 @@ h1 em{font-style:normal;color:var(--dim)}
   font-size:10px;font-weight:600;letter-spacing:.16em;text-transform:uppercase;color:var(--dimmer)}
 .cap .mid{color:var(--dim);font-weight:400;letter-spacing:.1em}
 
-/* the strip — one mark is one agent that asked */
 .axis{display:flex;align-items:flex-end;gap:2px;height:164px;overflow:hidden}
 .t{flex:1 1 0;min-width:0;background:var(--slate);height:22%}
-.t.f{background:var(--bone);height:100%}
-.t.ice{background:var(--ice)}
+.t.f{background:transparent;height:100%;box-shadow:inset 0 0 0 1px var(--bone)}
+.t.ice{background:var(--ice);box-shadow:none;height:100%}
 .baseline{height:1px;background:var(--rule)}
 #read{margin-top:15px;font-size:15.5px;color:var(--dim);min-height:1.7em}
 #read b{color:var(--bone);font-weight:600}
 
-/* twin combs — two readings of one book, at one scale */
 .twin{display:grid;grid-template-columns:minmax(0,230px) minmax(0,1fr);gap:18px;align-items:center;margin-bottom:14px}
 .comb{display:flex;align-items:flex-end;gap:2px;height:46px;overflow:hidden}
-.comb i{flex:1 1 0;min-width:0;background:var(--bone);height:100%;display:block}
-.comb.built i{background:var(--slate-lit)}
+.comb i{flex:1 1 0;min-width:0;background:transparent;height:100%;display:block;
+  box-shadow:inset 0 0 0 1px var(--bone)}
+.comb.built i{background:var(--slate-lit);box-shadow:none}
 .comb.none{color:var(--dimmer);font-size:10px;letter-spacing:.2em;text-transform:uppercase;align-items:center}
 
 .rows{margin-top:8px}
-.row{border-top:1px solid var(--rule);padding:22px 0;display:grid;grid-template-columns:minmax(0,1fr) minmax(0,300px);gap:26px}
-.row h2{font-weight:400;font-size:19px;letter-spacing:-.02em;margin-bottom:6px}
+.row{border-top:1px solid var(--rule);padding:26px 0;display:grid;
+  grid-template-columns:minmax(0,1fr) minmax(0,320px);gap:28px;align-items:start}
+.row h2{font-weight:400;font-size:19px;letter-spacing:-.02em;margin-bottom:8px}
+.row .state{font-size:10px;font-weight:600;letter-spacing:.18em;text-transform:uppercase;
+  color:var(--dimmer);margin-bottom:10px}
+.row.built .state{color:var(--dim)}
+.row.oor .state{color:var(--ice)}
 .row .sub{color:var(--dim);font-size:14px}
 .row .who{color:var(--dimmer);font-size:13px;margin-top:4px}
-.row .fig{font-weight:200;font-size:30px;letter-spacing:-.045em;font-variant-numeric:tabular-nums;line-height:1}
-.row .marks{display:flex;flex-wrap:wrap;gap:2px;margin-top:8px;max-width:100%}
-.row .m{width:5px;height:16px;background:var(--bone);display:block}
-.row.built .m{background:var(--slate-lit)}
-.row.oor .m{background:var(--ice)}
+.row .fig{font-weight:200;font-size:36px;letter-spacing:-.045em;font-variant-numeric:tabular-nums;line-height:1}
+.row .fig-lab{margin-top:8px;font-size:12px;color:var(--dim);max-width:28ch;line-height:1.45}
+.row .marks{display:flex;flex-wrap:wrap;gap:3px;margin-top:12px;max-width:100%}
+.row .m{width:6px;height:18px;display:block;background:transparent;
+  box-shadow:inset 0 0 0 1px var(--bone)}
+.row.built .m{background:var(--slate-lit);box-shadow:none}
+.row.oor .m{box-shadow:inset 0 0 0 1px var(--ice)}
+.row .m.arrive{animation:arrive 280ms ease-out}
+.row.filling .m{animation:fill-in 360ms ease-out forwards}
+.row.filling .slot-val{animation:write-in 360ms ease-out}
+@keyframes arrive{
+  from{opacity:0;transform:translateY(5px)}
+  to{opacity:1;transform:none}
+}
+@keyframes fill-in{
+  from{background:transparent;box-shadow:inset 0 0 0 1px var(--bone)}
+  to{background:var(--slate-lit);box-shadow:none}
+}
+@keyframes write-in{
+  from{opacity:0}
+  to{opacity:1}
+}
+
+.slots{margin-top:14px;display:grid;gap:6px;max-width:52ch}
+.slot{display:grid;grid-template-columns:88px minmax(0,1fr);gap:12px;align-items:baseline;
+  font-size:13px;line-height:1.4}
+.slot-k{font-size:10px;font-weight:600;letter-spacing:.16em;text-transform:uppercase;color:var(--dimmer)}
+.slot-val{color:var(--dim);overflow-wrap:anywhere}
+.slot-val.empty{color:var(--dimmer);box-shadow:inset 0 -1px 0 var(--rule);min-height:1.1em}
+.row.built .slot-val{color:var(--bone)}
 
 .tail{border-top:1px solid var(--rule);padding-top:20px;color:var(--dim);max-width:58ch}
 .q{margin:22px 0}
@@ -103,7 +107,10 @@ h1 em{font-style:normal;color:var(--dim)}
 .q th{color:var(--dimmer);font-size:10px;letter-spacing:.2em;text-transform:uppercase}
 .limits{border-top:1px solid var(--rule);margin-top:70px;padding-top:22px;color:var(--dim);font-size:15px;max-width:64ch}
 .gone{border:1px solid var(--rule);padding:52px 40px;margin-top:30px;color:var(--dim)}
-@media(max-width:860px){.in{padding:0 24px}.row{grid-template-columns:1fr}.twin{grid-template-columns:1fr;gap:6px}}
+@media(max-width:860px){.in{padding:0 24px}.row{grid-template-columns:1fr}.twin{grid-template-columns:1fr;gap:6px}.slot{grid-template-columns:76px 1fr}}
+@media(prefers-reduced-motion:reduce){
+  .row .m.arrive,.row.filling .m,.row.filling .slot-val{animation:none}
+}
 </style>
 </head>
 <body>
@@ -115,7 +122,9 @@ h1 em{font-style:normal;color:var(--dim)}
 <div class="in">
   <section class="say">
     <h1 id="hero">Agents asked for it <em>and it did not exist.</em></h1>
-    <p id="lede">One mark is one agent that asked.</p>
+    <p class="def">A <b>ghost</b> is a DataHub catalog entry for a table that is still missing.
+      This page ranks those ghosts by how many independent agents are waiting.</p>
+    <p id="lede">One hollow mark is one agent that asked. When a ghost goes solid, the marks fill in.</p>
     <p class="lab" style="margin-top:20px"><a href="/">← the demand board</a></p>
   </section>
 
@@ -125,7 +134,7 @@ h1 em{font-style:normal;color:var(--dim)}
     <div class="baseline"></div>
     <div class="cap">
       <span id="capL">REQUEST 001</span>
-      <span class="mid" id="capM">TALL = STILL NOT BUILT</span>
+      <span class="mid" id="capM">HOLLOW = STILL NOT BUILT</span>
       <span id="capR">—</span>
     </div>
     <div id="read"></div>
@@ -156,9 +165,92 @@ function esc(s){return String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;',
 function ago(ms){if(!ms)return'—';const s=Math.max(0,(Date.now()-ms)/1000);
   if(s<90)return Math.round(s)+'s';if(s<5400)return Math.round(s/60)+' min';
   if(s<172800)return Math.round(s/3600)+' h';return Math.round(s/86400)+' d';}
-// One mark is one agent. Never rounded, never scaled — the DOM is assertable
-// against the figure printed beside it.
-function marks(n){return Array.from({length:n},()=>'<i class="m"></i>').join('');}
+function agentName(a){return String(a||'').replace(/^nullspace_/,'');}
+function marksHtml(n, prev){
+  const total=Math.max(0,n|0);
+  const old=Math.max(0,prev|0);
+  let out='';
+  for(let i=0;i<total;i++) out+=`<i class="m${i>=old?' arrive':''}"></i>`;
+  return out;
+}
+function demandCopy(n, solid){
+  const k=n|0;
+  if(solid){
+    if(k===1) return '1 agent asked · now an owner';
+    return `${k} agents asked · each is now an owner`;
+  }
+  if(k===0) return 'no agents yet';
+  if(k===1) return '1 agent asked · alone so far';
+  return `${k} independent agents asked · none of them knew about each other`;
+}
+
+const prevDemand=new Map();
+const prevBuilt=new Map();
+
+function openRow(r){
+  const want=r.want;
+  const prev=prevDemand.has(want)?prevDemand.get(want):r.demand;
+  const who=(r.requesters||[]).map(agentName);
+  const whoTxt=who.slice(0,3).join(', ')+(who.length>3?` and ${who.length-3} more`:'');
+  const pr=r.pr_url&&/^https?:/.test(r.pr_url)
+    ? `<div class="who"><a href="${esc(r.pr_url)}" target="_blank" rel="noreferrer">the pull request</a></div>`:'';
+  return `<div class="row" data-want="${esc(want)}">
+    <div>
+      <div class="state">Ghost — still missing</div>
+      <h2>${esc(want)}</h2>
+      <div class="slots">
+        <div class="slot"><span class="slot-k">Schema</span><span class="slot-val empty">empty until this is built</span></div>
+        <div class="slot"><span class="slot-k">Built from</span><span class="slot-val empty">empty until this is built</span></div>
+        <div class="slot"><span class="slot-k">Asked by</span><span class="slot-val">${esc(whoTxt||'—')}</span></div>
+      </div>
+      <div class="sub" style="margin-top:10px">open ${ago(r.first_asked_ms)} · ${r.blocked_agents} agent${r.blocked_agents===1?'':'s'} still blocked</div>
+      ${pr}
+    </div>
+    <div>
+      <div class="fig n">${r.demand}</div>
+      <div class="fig-lab">${esc(demandCopy(r.demand, false))}</div>
+      <div class="marks">${marksHtml(r.demand, prev)}</div>
+    </div>
+  </div>`;
+}
+
+function builtRow(r){
+  const want=r.want;
+  const prev=prevDemand.has(want)?prevDemand.get(want):r.demand;
+  const wasOpen=prevBuilt.has(want) && prevBuilt.get(want)===false;
+  const fields=(r.fields||[]).filter(Boolean);
+  const schema=fields.length?fields.join(', '):'';
+  const up=r.upstream_total
+    ? `${r.upstream_total} upstream table${r.upstream_total===1?'':'s'}`
+    : '';
+  const who=(r.requesters||[]).map(agentName);
+  const ownerTxt=who.length
+    ? who.slice(0,4).join(', ')+(who.length>4?` and ${who.length-4} more`:'')
+    : '';
+  const empty=(v,fallback)=>v
+    ? `<span class="slot-val">${esc(v)}</span>`
+    : `<span class="slot-val empty">${esc(fallback)}</span>`;
+  const pr=r.pr_url&&/^https?:/.test(r.pr_url)
+    ? `<div class="who"><a href="${esc(r.pr_url)}" target="_blank" rel="noreferrer">the pull request</a></div>`:'';
+  return `<div class="row built${wasOpen?' filling':''}" data-want="${esc(want)}">
+    <div>
+      <div class="state">Solid — this table now exists</div>
+      <h2>${esc(want)}</h2>
+      <div class="slots">
+        <div class="slot"><span class="slot-k">Schema</span>${empty(schema,'not recorded')}</div>
+        <div class="slot"><span class="slot-k">Built from</span>${empty(up,'not recorded')}</div>
+        <div class="slot"><span class="slot-k">Owners</span>${empty(ownerTxt,'the agents that asked')}</div>
+      </div>
+      <div class="sub" style="margin-top:10px">built in ${r.time_to_fill_ms?Math.round(r.time_to_fill_ms/1000)+'s':'—'}</div>
+      ${pr}
+    </div>
+    <div>
+      <div class="fig n">${r.demand}</div>
+      <div class="fig-lab">${esc(demandCopy(r.demand, true))}</div>
+      <div class="marks">${marksHtml(r.demand, wasOpen?0:prev)}</div>
+    </div>
+  </div>`;
+}
 
 async function refresh(){
   let d; try{ d = await (await fetch('/api/order-book')).json(); }catch(e){ return; }
@@ -171,22 +263,18 @@ async function refresh(){
   }
   const t=d.totals, open=d.open||[], built=d.filled||[];
 
-  // The strip: one tick per want, tall when it is still not built. The eye can
-  // count them; the exact figures are printed underneath.
   const all=[...open.map(r=>({r,built:false})),...built.map(r=>({r,built:true}))];
   document.getElementById('axis').innerHTML = all.map(x=>
     `<i class="t${x.built?'':' f'}" title="${esc(x.r.want)} — ${x.r.demand} agents"></i>`).join('');
   document.getElementById('capL').textContent='REQUEST 001';
   document.getElementById('capR').textContent=String(all.length);
   document.getElementById('read').innerHTML =
-    `One mark is one table agents asked for. <b>${built.length}</b> exist. <b>${open.length}</b> do not — and <b>${t.blocked_agents}</b> agents are waiting on them.`;
+    `Hollow = still missing. Filled = built. <b>${built.length}</b> exist. <b>${open.length}</b> are ghosts — and <b>${t.blocked_agents}</b> agents are waiting on them, without knowing about each other.`;
   document.getElementById('hero').innerHTML =
     `<b>${t.blocked_agents}</b> agents asked for something <em>that did not exist.</em>`;
   document.getElementById('lede').textContent =
-    `${t.open_orders} tables they could not get. ${t.filled} built because the demand was visible. One mark is one agent that asked.`;
+    `${t.open_orders} ghosts still open. ${t.filled} filled in because the demand was visible. One hollow mark is one agent that asked.`;
 
-  // Twin combs at one shared scale. The built comb is nearly empty; that is the
-  // strongest image on the page and it does not get padded.
   const scale = Math.max(t.unmet_requests, t.requests_unblocked, 1);
   const comb = (n, cls) => n
     ? `<div class="comb ${cls}" style="width:${(n/scale*100).toFixed(1)}%">${Array.from({length:Math.min(n,300)},()=>'<i></i>').join('')}</div>`
@@ -195,26 +283,15 @@ async function refresh(){
     `<div class="twin"><span class="lab">Wanted, not built · ${t.unmet_requests}</span>${comb(t.unmet_requests,'')}</div>
      <div class="twin"><span class="lab">Wanted, and built · ${t.requests_unblocked}</span>${comb(t.requests_unblocked,'built')}</div>`;
 
-  document.getElementById('rows').innerHTML = open.slice(0,10).map(r=>`
-    <div class="row" data-want="${esc(r.want)}">
-      <div><h2>${esc(r.want)}</h2>
-        <div class="sub">open ${ago(r.first_asked_ms)} · ${r.blocked_agents} still blocked</div>
-        <div class="who">${(r.requesters||[]).slice(0,3).map(esc).join(', ')}${(r.requesters||[]).length>3?` and ${r.requesters.length-3} more`:''}</div>
-        ${r.pr_url&&/^https?:/.test(r.pr_url)?`<div class="who"><a href="${esc(r.pr_url)}" target="_blank" rel="noreferrer">the pull request</a></div>`:''}
-      </div>
-      <div><div class="fig n">${r.demand}</div><div class="marks">${marks(r.demand)}</div></div>
-    </div>`).join('') + (open.length>10
+  document.getElementById('rows').innerHTML = open.slice(0,10).map(openRow).join('') + (open.length>10
       ? `<div class="tail">and ${open.length-10} more, wanted by ${open.slice(10).reduce((n,r)=>n+r.demand,0)} agents between them. The long tail is most of the backlog.</div>`:'');
 
-  document.getElementById('built').innerHTML = built.length ? built.map(r=>`
-    <div class="row built" data-want="${esc(r.want)}">
-      <div><h2>${esc(r.want)}</h2>
-        <div class="sub">built in ${r.time_to_fill_ms?Math.round(r.time_to_fill_ms/1000)+'s':'—'} · ${r.upstream_total} upstream${
-          (r.fields||[]).length?' · '+r.fields.map(esc).join(', '):''}</div>
-        ${r.pr_url&&/^https?:/.test(r.pr_url)?`<div class="who"><a href="${esc(r.pr_url)}" target="_blank" rel="noreferrer">the pull request</a></div>`:''}
-      </div>
-      <div><div class="fig n">${r.demand}</div><div class="marks">${marks(r.demand)}</div></div>
-    </div>`).join('') : `<div class="tail">Nothing built yet.</div>`;
+  document.getElementById('built').innerHTML = built.length
+    ? built.map(builtRow).join('')
+    : `<div class="tail">Nothing built yet.</div>`;
+
+  for(const r of open){ prevDemand.set(r.want, r.demand); prevBuilt.set(r.want, false); }
+  for(const r of built){ prevDemand.set(r.want, r.demand); prevBuilt.set(r.want, true); }
 
   if(built.length) showRan(built[0].want);
 }
@@ -225,21 +302,22 @@ async function showRan(want){
   if(d.status==='disabled'){ el.innerHTML=`<div class="tail">${esc(d.reason)}</div>`; return; }
   if(d.status!=='verified') return;
   el.innerHTML = `<div class="g"><span class="lab">${d.runs} of ${d.total} queries that could not run, now run</span>
-    ${d.queries.map(q=>`<div class="q"><span class="lab">${esc(q.agent_id)}</span>
+    ${d.queries.map(q=>`<div class="q"><span class="lab">${esc(agentName(q.agent_id))}</span>
       <span class="sql">${esc(q.sql)}</span>
       ${q.status==='runs'
         ? `<table><tr>${(q.columns||[]).map(c=>`<th>${esc(c)}</th>`).join('')}</tr>${(q.rows||[]).map(r=>`<tr>${r.map(v=>`<td>${esc(v)}</td>`).join('')}</tr>`).join('')}</table>`
         : `<span class="sub">still blocked — ${esc(q.error||'')}</span>`}</div>`).join('')}
-    <p class="sub">None of these agents asked again. Verified by ${esc(d.verified_by)}.</p></div>`;
+    <p class="sub">None of these agents asked again. Checked by running the query, not by reading metadata alone.</p></div>`;
 }
 
 document.getElementById('limits').innerHTML =
   `<p class="lab" style="margin-bottom:10px">What this page cannot see</p>
-   <p>Requester identities and warehouse rows are disclosed demo traffic; the misses behind them
-   are genuine Postgres <em>relation does not exist</em> errors read from the server's own log.
-   Demand counts independent requesters, so a dashboard refreshing every ten minutes is one
-   agent, not a hundred and forty-four. Every figure above is read live from DataHub — except
-   the queries at the end, which are executed, because that claim cannot be settled by metadata.</p>`;
+   <p>Agent names and warehouse sample rows are disclosed demo traffic; the misses
+   behind them are genuine Postgres <em>relation does not exist</em> errors from the
+   server log. The number counts independent agents, so a dashboard refreshing every
+   ten minutes is one agent, not a hundred and forty-four. Every figure above is read
+   live from DataHub — except the queries at the end, which are executed, because
+   that claim cannot be settled by metadata.</p>`;
 
 refresh(); setInterval(refresh,3000);
 </script>

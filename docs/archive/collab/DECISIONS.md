@@ -48,6 +48,7 @@ Status values: `PROPOSED` · `DECIDED` · `OPEN` · `SUPERSEDED`.
 | D38 | 2026-08-09 | MCP `find_dataset` uses one `DataHubClient` for search+write and flushes ghost emits before return. Split clients + atexit-only flush hid demand from the board on long-lived sessions. | **DECIDED & verified on host `cursor`** | Cursor Lane A | flush→GMS demand=3; board within 2s |
 | D39 | 2026-08-09 | Pin `dbt-core>=1.8,<2` (and matching `dbt-postgres`) in install-deps + requirements so strangers do not get Fusion without a Postgres adapter. | **DECIDED** | Cursor Lane A | preflight rejects Fusion |
 | D40 | 2026-08-10 | Stranger cold path after MCP claimed-honesty: cold eval finalizes (merge→dbt→solid) when `claim_and_build` returns `claimed` with an https PR. `write_dbt_model` unions `sources.yml` tables. README remote example uses seeded `segment/mrr`. preflight/up respect `NULLSPACE_BOARD_PORT`/`URL`. Cold-reveal &lt;3min claim is warm-images only. | **DECIDED & verified on host Oscar laptop** | Cursor Lane A | stranger-cold-run; PRs #18/#19; SELECT receipts |
+| D41 | 2026-08-10 | Judge board legibility: one signature device — hollow marks that fill when a ghost goes solid. Board copy defines ghost, makes demand read as independent agents, and shows solid as schema + upstream + owners filling empty slots. HTML/CSS only; Darkroom/Instrument skin kept; no Python; demo beat unchanged. | **DECIDED & verified** | Cursor judge-legibility | `board.html` + `order-book.html`; 29 tests |
 
 ## Open items (not yet decisions)
 
