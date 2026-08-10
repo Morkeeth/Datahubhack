@@ -3,9 +3,9 @@
 > Every witness row names the **host** it was witnessed on and the command that
 > printed it. Night-run receipts from another host are not reused as truth here.
 
-- **Last updated:** 2026-08-09 ~20:15 UTC by Cursor Lane A
+- **Last updated:** 2026-08-09 ~23:55 UTC by Cursor Lane A
 - **Host:** `cursor`
-- **Phase:** Lane A wrapped — design deferred; see `docs/collab/SUBMISSION-AUDIT.md` (multi-model)
+- **Phase:** Post-submit improvements shipped (D38 flush, D39 dbt pin); cherry still = Oscar applies RFC #19022
 - **Worker branch:** `cursor/datahub-hack-setup-4c9d`
 
 ## This turn
@@ -37,16 +37,16 @@ Oscar has a separate design idea; **do not merge a board restyle from these comp
 
 ## Submission audit
 
-Full multi-model report: **`docs/collab/SUBMISSION-AUDIT.md`**  
+Full multi-model report: **`docs/archive/collab/SUBMISSION-AUDIT.md`**  
 Consensus: **SHIP WITH GAPS** — engine real; recording risks are board pollution, `file://` PR, dbt Fusion→CTAS, walk-the-book not in `demo.sh`.
 
-## Still open (submission blockers)
+## Still open (post-submit, ~20h)
 
-1. Oscar: App → nullspace-dbt / hosted webhook (real `https://` PR)
-2. Live watcher money shot: skip churn/NRR → claim `pipeline coverage by rep` → solid + `agents_return`
-3. Lane B: video / submission package
-4. Product ruling: `install-deps` + `dbt-postgres` + profile (stranger solid must be a real table — Lane B also touched this)
+1. **P0:** Apply RFC polish → green #19022 (`docs/oss/datahub-rfc-19022/APPLY.md`) — Oscar/Claude
+2. **P0:** X clip — `docs/submission/x-clip.md` (use merged `nullspace-dbt#5`, not live `file://`)
+3. Claude Lane B retro into `hack.md`
+4. Plan: `docs/archive/collab/reviews/final-20h-plan.md`
 
-## Handback — Lane B
+## Handback — Lane B / Oscar
 
-Board/UI restyle ownership + video. `mcp_server.py` stale warning if still present.
+RFC apply + X post. No second DataHub PR. Cursor cannot push `Morkeeth/datahub`.

@@ -73,12 +73,15 @@ def cmd_ask(args: argparse.Namespace) -> int:
         )
         return 1
     ns = _ns(require_catalog=True)
+    # Same client as ns.dh so buffered ghost MCPs land before the process exits.
     receipt = consumer_search(
         ns,
         want=args.want,
         agent_id=args.agent,
-        dh=dh,
+        dh=ns.dh,
     )
+    if ns.dh is not None:
+        ns.dh.flush_ghost_emits()
     print(json.dumps(receipt, indent=2))
     return 0 if receipt.get("status") != "refused" else 1
 

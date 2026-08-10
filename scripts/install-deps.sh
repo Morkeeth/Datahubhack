@@ -52,10 +52,13 @@ datahub version || datahub --version || true
 # nobody can select from is the exact kind of claim this project refuses to make,
 # so the tool that makes it true is part of the install, not a footnote.
 echo "==> Install dbt (so a solid asset is a real table, not just metadata)"
-"$PY" -m pip install --user "dbt-postgres" || \
+# Pin dbt-core <2: unpinned `dbt-postgres` resolves Fusion (2.0 alpha) which
+# has no Postgres adapter — solid then falls back to CTAS (D33). Strangers
+# following the README must get a working `dbt run`, not a silent fallback.
+"$PY" -m pip install --user "dbt-core>=1.8,<2" "dbt-postgres>=1.8,<1.10" || \
   echo "    WARNING: dbt-postgres did not install. A ghost can still go solid in" \
        "DataHub, but no physical table will exist. Do not trust 'solid' until" \
-       "'dbt build' has run."
+       "'dbt run' has succeeded."
 
 if [ ! -f "${HOME}/.dbt/profiles.yml" ]; then
   echo "==> Write ~/.dbt/profiles.yml for the Compose warehouse"

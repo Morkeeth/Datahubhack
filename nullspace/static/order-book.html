@@ -200,6 +200,7 @@ async function refresh(){
       <div><h2>${esc(r.want)}</h2>
         <div class="sub">open ${ago(r.first_asked_ms)} · ${r.blocked_agents} still blocked</div>
         <div class="who">${(r.requesters||[]).slice(0,3).map(esc).join(', ')}${(r.requesters||[]).length>3?` and ${r.requesters.length-3} more`:''}</div>
+        ${r.pr_url&&/^https?:/.test(r.pr_url)?`<div class="who"><a href="${esc(r.pr_url)}" target="_blank" rel="noreferrer">the pull request</a></div>`:''}
       </div>
       <div><div class="fig n">${r.demand}</div><div class="marks">${marks(r.demand)}</div></div>
     </div>`).join('') + (open.length>10

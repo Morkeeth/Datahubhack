@@ -169,9 +169,10 @@ that produced it.
 - Cloudflare quick tunnels mint a **new hostname every restart**, so a live URL is only
   live while the terminal is open.
 - The harvest corpus is reproducible but **not committed**, so a stranger sees the
-  mechanism, not our 51 wants, until they run the seeder themselves.
-- `dbt` must be installed for `solid` to mean a real table. `scripts/install-deps.sh`
-  installs it; if it fails, the run says solid cannot be trusted.
+  mechanism, not our counted wants, until they run the seeder themselves. Figures in
+  §2 were read live on the recording host (2026-08-09); re-run harvest for a fresh count.
+- `dbt-core` must be **&lt;2** for `solid` to mean a real dbt table. `scripts/install-deps.sh`
+  pins it; Fusion/alpha has no Postgres adapter and falls back to warehouse CTAS (disclosed).
 
 ---
 
@@ -192,4 +193,7 @@ A ready-to-apply polish kit lives at **`docs/oss/datahub-rfc-19022/`**:
 | `STRATEGY.md` | Consensus: harden the RFC tonight; defer the `NullspaceDemandSource` connector PR to later, referencing #19022 |
 
 The polish kit is **ready to apply** — it is not yet pushed to the DataHub PR (that step
-needs Oscar's token; see `APPLY.md`).
+needs Oscar's token; see `APPLY.md`). **Do this before judging:** red CI on #19022 is the
+one unfinished cherry. Then paste `REVIEWER-RESPONSE.md` as a PR comment.
+
+**X clip run-sheet:** [`x-clip.md`](x-clip.md) · **preflight:** `bash scripts/preflight-demo.sh`

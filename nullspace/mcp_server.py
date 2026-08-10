@@ -155,35 +155,42 @@ def find_dataset(want: str, ctx: Context) -> dict[str, Any]:
             "agent_id": agent_id,
             "identified_by": how,
         }
+    # One client for search + write. A second DataHubClient here used to search on
+    # `live` while emit_ghost buffered on `ns.dh` — and only flushed at atexit —
+    # so long-lived MCP sessions returned miss_ghosted while the board stayed empty.
     ns = _ns()
-    live = _live()
+    live = ns.dh
 
-    receipt = consumer_search(ns, want=want, agent_id=agent_id, dh=live)
-    receipt["identified_by"] = how
-    receipt["datahub_reachable"] = live is not None
-    if live is None:
-        # Never let a degraded run look like a healthy one. This used to say the
-        # miss had been "recorded locally" — which stopped being true when Lane A
-        # made consumer_search refuse outright with GMS down (D24). A warning
-        # that describes behaviour the code no longer has is worse than none: it
-        # tells a reader demand was captured when nothing was.
-        receipt["warning"] = (
-            "DataHub GMS was not reachable, so nothing was recorded anywhere. "
-            "Demand that the catalog never sees is not demand, and Nullspace "
-            "refuses rather than keeping a private copy."
-        )
+    try:
+        receipt = consumer_search(ns, want=want, agent_id=agent_id, dh=live)
+        receipt["identified_by"] = how
+        receipt["datahub_reachable"] = live is not None
+        if live is None:
+            # Never let a degraded run look like a healthy one. This used to say the
+            # miss had been "recorded locally" — which stopped being true when Lane A
+            # made consumer_search refuse outright with GMS down (D24). A warning
+            # that describes behaviour the code no longer has is worse than none: it
+            # tells a reader demand was captured when nothing was.
+            receipt["warning"] = (
+                "DataHub GMS was not reachable, so nothing was recorded anywhere. "
+                "Demand that the catalog never sees is not demand, and Nullspace "
+                "refuses rather than keeping a private copy."
+            )
 
-    if receipt["status"] == "miss_ghosted":
-        ghost = receipt["ghost"]
-        remaining = max(0, ns.demand_threshold - ghost["demand"])
-        receipt["threshold"] = ns.demand_threshold
-        receipt["agents_still_needed"] = remaining
-        receipt["next"] = (
-            "buildable now — call claim_and_build"
-            if remaining == 0
-            else f"{remaining} more independent agent(s) must ask before this can be built"
-        )
-    return receipt
+        if receipt["status"] == "miss_ghosted":
+            ghost = receipt["ghost"]
+            remaining = max(0, ns.demand_threshold - ghost["demand"])
+            receipt["threshold"] = ns.demand_threshold
+            receipt["agents_still_needed"] = remaining
+            receipt["next"] = (
+                "buildable now — call claim_and_build"
+                if remaining == 0
+                else f"{remaining} more independent agent(s) must ask before this can be built"
+            )
+        return receipt
+    finally:
+        if ns.dh is not None:
+            ns.dh.flush_ghost_emits()
 
 
 @server.tool(
@@ -194,12 +201,21 @@ def find_dataset(want: str, ctx: Context) -> dict[str, Any]:
 )
 def open_demand() -> dict[str, Any]:
     ns = _ns()
+    # Catalog is SoT — hydrate before ranking so the builder walks DataHub, not a
+    # stale file cache from a previous process.
+    if ns.dh is not None:
+        try:
+            ns.hydrate(replace=False)
+        except Exception:
+            pass
+        ns.dh.flush_ghost_emits()
     ghosts = [g.to_public() for g in ns.store.list_ghosts()]
     return {
         "threshold": ns.demand_threshold,
         "count": len(ghosts),
         "buildable": [g.want for g in ns.ready_to_build()],
         "ghosts": ghosts,
+        "catalog": "live" if ns.dh is not None else "unreachable",
     }
 
 
@@ -230,6 +246,11 @@ def claim_and_build(want: str, ctx: Context) -> dict[str, Any]:
             "public_instance": True,
         }
     ns = _ns()
+    if ns.dh is not None:
+        try:
+            ns.hydrate(replace=False)
+        except Exception:
+            pass
 
     ghost = ns.store.get(want)
     if ghost is None:

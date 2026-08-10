@@ -1,8 +1,11 @@
 # APPLY — Oscar's 5-minute runbook for RFC #19022
 
-Oscar is recording; this is the exact apply after the take. Everything below runs against
-the fork that already holds the RFC branch. The polished body lives in this package at
-`docs/oss/datahub-rfc-19022/19022-demand-side-metadata.md`.
+> **DO THIS NOW (post-submit cherry).** #19022 is still RED on title + prettier.
+> Cursor's token cannot push `Morkeeth/datahub`. Your laptop `gh` can. ~15 minutes
+> turns the judged upstream artifact green.
+
+Everything below runs against the fork that already holds the RFC branch. The polished
+body lives in this package at `docs/oss/datahub-rfc-19022/19022-demand-side-metadata.md`.
 
 ## Prereqs (once)
 
