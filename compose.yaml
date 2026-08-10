@@ -143,6 +143,12 @@ services:
   datahub-gms:
     image: acryldata/datahub-gms:v1.7.0
     hostname: datahub-gms
+    # GMS is the only service whose death is silent: the board keeps serving its
+    # last hydrate and the eval is the only thing that notices. On a 6 GiB VM it
+    # gets OOM-killed (exit 137) under ingestion load, and with the default
+    # `restart: no` it stays dead — on 2026-08-10 it stayed dead for three hours
+    # while the public URL kept answering. Self-heal instead of lying quietly.
+    restart: unless-stopped
     depends_on:
       datahub-upgrade:
         condition: service_completed_successfully
