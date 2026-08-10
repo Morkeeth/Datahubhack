@@ -43,6 +43,13 @@ behind them are genuine `relation ... does not exist` errors raised by Postgres.
 
 ## 3 · THE RECORDING RUN-SHEET
 
+> **This section is the author's own run-sheet for filming, on the author's machine.**
+> It is not the way to run this project. The paths (`~/Datahubhack-jt`, an existing
+> `.venv`) and the port choice below exist only on the machine the video was recorded
+> on. **If you want to run Nullspace, follow `README.md`** — one `docker compose up`,
+> board on `http://localhost:8787`. It is kept here because it is the honest record of
+> how the demo was shot.
+
 Two terminals and a browser. Nothing here needs typing mid-take except the marked lines.
 
 **Before you start**
@@ -57,7 +64,8 @@ export PATH="$HOME/Datahubhack/.venv/bin:$PATH" \
 python -m uvicorn nullspace.board:app --host 127.0.0.1 --port 8790   # terminal 1
 ```
 Board: `http://localhost:8790` · Order book: `http://localhost:8790/order-book`
-**Not 8787 — Cursor holds that port.**
+(8790 rather than the project default of 8787 only because another process on the
+recording machine already held 8787. A fresh machine uses 8787 — see `README.md`.)
 
 | # | Shot | What you do |
 |---|---|---|
