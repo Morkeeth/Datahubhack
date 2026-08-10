@@ -67,6 +67,33 @@ None of those was true eighteen months ago. All three are load-bearing.
 | **v3** | Anyone claims a ghost: your builder, a consultancy, a vendor, a human on a Friday. Demand becomes a market inside the org. | Fulfilment marketplace |
 | **v4** | Demand aggregated **across** organisations. *Trial-to-paid conversion by cohort* wanted at four hundred companies is a schema standard forming in public — the place data models get discovered instead of reinvented for the ten-thousandth time. | The company |
 
+## Three doors DataHub already built and left open
+
+_Added 2026-08-10, after reading what DataHub shipped this year._
+
+DataHub's own 2026 positioning is the strongest argument for this. DataHub Cloud v1
+launched in May as a context layer between analytics agents — Databricks Genie, Snowflake
+Intelligence — and the warehouse, "pushing accuracy levels beyond 90%", on a $35M Series B
+raised to enable AI data management.
+
+**Accuracy is measured on questions that can be answered.** The question that cannot be
+answered lowers no score, produces no citation, and leaves no trace anyone reads. That is
+not an accuracy problem and more context cannot close it — it is a missing entity problem.
+
+So this does not need a new product surface. It needs three doors that already exist:
+
+| DataHub already shipped | Nullspace lands as |
+|---|---|
+| **Skills Registry** — `datahub-search`, `-lineage`, `-enrich`, `-quality`, all of which assume the asset exists | `datahub-demand`, the sibling that handles the miss. No metadata-model change required. |
+| **The metadata model** | RFC #19022, open, arguing against our own `dataset`-squat |
+| **Micro Frontends** — "build and run custom applications inside DataHub without modifying the core platform" | The order book as an app: every want in the organisation, ranked by how many agents are waiting |
+
+The moat argument below is unchanged by this, and gets sharper: the reason an
+agent-observability vendor cannot take this is that a trace has no identity, so two
+identical failures in two teams never meet. The industry's current answer routes failed
+traces into **evaluation datasets**, not back into the catalog. Convergence needs a shared
+namespace with ownership and lineage, which is the definition of a catalog.
+
 ## The moat, stated honestly
 
 **It is not the code.** The mechanic is a demand counter, a threshold and a code
