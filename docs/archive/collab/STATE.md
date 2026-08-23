@@ -17,7 +17,7 @@
 | Board + order-book aligned | ✅ | same `demandCol` / `slotVal` pattern |
 | No Python / no Docker | ✅ | fixture preview `:8799`; Chrome `/tmp/judge-board-v2.png` |
 | `pytest nullspace/tests -q` | ✅ | **29 passed** |
-| Push to `main` | ⏳ | this turn |
+| Push to `main` | ✅ | `a96775e` on `origin/main` |
 
 ## Still open
 
