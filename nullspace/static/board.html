@@ -65,9 +65,10 @@ h1 em{font-style:normal;color:var(--dim)}
 .row.built .state{color:var(--dim)}
 .row .sub{color:var(--dim);font-size:14px}
 .row .who{color:var(--dimmer);font-size:13px;margin-top:4px}
-.row .fig{font-weight:200;font-size:36px;letter-spacing:-.045em;font-variant-numeric:tabular-nums;line-height:1}
-.row .fig-lab{margin-top:8px;font-size:12px;color:var(--dim);max-width:28ch;line-height:1.45}
-.row .marks{display:flex;flex-wrap:wrap;gap:3px;margin-top:12px;max-width:100%}
+.demand-col{display:flex;flex-direction:column;gap:12px}
+.demand-say{font-size:16px;font-weight:400;color:var(--bone);line-height:1.45;max-width:30ch;margin:0}
+.row .marks{display:flex;flex-wrap:wrap;gap:3px;max-width:100%}
+.row .became{font-size:13px;color:var(--dim);margin-bottom:8px;max-width:52ch;line-height:1.45}
 
 /* Signature: hollow mark = agent that asked for something missing.
    Fill = the table now exists. One idea, used for every demand count. */
@@ -76,6 +77,7 @@ h1 em{font-style:normal;color:var(--dim)}
 .row.built .m{background:var(--slate-lit);box-shadow:none}
 .row .m.arrive{animation:arrive 280ms ease-out}
 .row.filling .m{animation:fill-in 360ms ease-out forwards}
+.row.filling .slot-val.filled,.row.filling .m.sm.on{animation:fill-in 360ms ease-out forwards}
 .row.filling .slot-val{animation:write-in 360ms ease-out}
 @keyframes arrive{
   from{opacity:0;transform:translateY(5px)}
@@ -95,18 +97,21 @@ h1 em{font-style:normal;color:var(--dim)}
 .slot{display:grid;grid-template-columns:88px minmax(0,1fr);gap:12px;align-items:baseline;
   font-size:13px;line-height:1.4}
 .slot-k{font-size:10px;font-weight:600;letter-spacing:.16em;text-transform:uppercase;color:var(--dimmer)}
-.slot-val{color:var(--dim);overflow-wrap:anywhere}
+.slot-val{color:var(--dim);overflow-wrap:anywhere;display:flex;align-items:baseline;gap:0}
 .slot-val.empty{color:var(--dimmer);font-style:normal;
   box-shadow:inset 0 -1px 0 var(--rule);min-height:1.1em}
-.row.built .slot-val{color:var(--bone)}
+.row.built .slot-val.filled{color:var(--bone)}
 .row.built .slot-val.empty{color:var(--dimmer)}
+.m.sm{width:4px;height:11px;flex:0 0 4px;margin-right:7px;background:transparent;
+  box-shadow:inset 0 0 0 1px var(--bone)}
+.m.sm.on{background:var(--slate-lit);box-shadow:none}
 
 .tail{border-top:1px solid var(--rule);padding-top:20px;color:var(--dim);max-width:58ch}
 .limits{border-top:1px solid var(--rule);margin-top:70px;padding-top:22px;color:var(--dim);font-size:15px;max-width:64ch}
 .gone{border:1px solid var(--rule);padding:52px 40px;margin-top:30px;color:var(--dim)}
 @media(max-width:860px){.in{padding:0 24px}.row{grid-template-columns:1fr}.slot{grid-template-columns:76px 1fr}}
 @media(prefers-reduced-motion:reduce){
-  .row .m.arrive,.row.filling .m,.row.filling .slot-val{animation:none}
+  .row .m.arrive,.row.filling .m,.row.filling .m.sm.on,.row.filling .slot-val{animation:none}
 }
 </style>
 </head>
@@ -183,6 +188,20 @@ function demandCopy(n, solid){
   return `${k} independent agents asked · none of them knew about each other`;
 }
 
+function demandCol(n, prev, solid){
+  return `<div class="demand-col">
+    <div class="marks" aria-hidden="true">${marksHtml(n, prev)}</div>
+    <p class="demand-say">${esc(demandCopy(n, solid))}</p>
+  </div>`;
+}
+
+function slotVal(v, emptyTxt, solid){
+  const hollow=`<i class="m sm" aria-hidden="true"></i>`;
+  const filled=`<i class="m sm on" aria-hidden="true"></i>`;
+  if(v) return `<span class="slot-val${solid?' filled':''}">${solid?filled:''}${esc(v)}</span>`;
+  return `<span class="slot-val empty">${hollow}${esc(emptyTxt)}</span>`;
+}
+
 function slots(g, solid){
   const fields=(g.schema_fields||[]).map(f=>typeof f==='string'?f:f.name).filter(Boolean);
   const ups=(g.upstream_urns||[]).map(shortName).filter(Boolean);
@@ -192,13 +211,13 @@ function slots(g, solid){
   const ownerTxt=owners.length
     ? owners.slice(0,4).join(', ')+(owners.length>4?` and ${owners.length-4} more`:'')
     : '';
-  const empty=v=>v
-    ? `<span class="slot-val">${esc(v)}</span>`
-    : `<span class="slot-val empty">${solid?'not recorded':'empty until this is built'}</span>`;
-  return `<div class="slots">
-    <div class="slot"><span class="slot-k">Schema</span>${empty(schema)}</div>
-    <div class="slot"><span class="slot-k">Built from</span>${empty(upstream)}</div>
-    <div class="slot"><span class="slot-k">${solid?'Owners':'Asked by'}</span>${empty(ownerTxt)}</div>
+  const became=solid
+    ? `<p class="became">While this was a ghost, Schema · Built from · Owners were empty. Building the table filled them in.</p>`
+    : '';
+  return `${became}<div class="slots">
+    <div class="slot"><span class="slot-k">Schema</span>${slotVal(schema, solid?'not recorded':'empty until this is built', solid)}</div>
+    <div class="slot"><span class="slot-k">Built from</span>${slotVal(upstream, solid?'not recorded':'empty until this is built', solid)}</div>
+    <div class="slot"><span class="slot-k">${solid?'Owners':'Asked by'}</span>${slotVal(ownerTxt, solid?'the agents that asked':'—', solid)}</div>
   </div>`;
 }
 
@@ -221,9 +240,7 @@ function row(g){
       ${pr}
     </div>
     <div>
-      <div class="fig n">${g.demand}</div>
-      <div class="fig-lab">${esc(demandCopy(g.demand, solid))}</div>
-      <div class="marks">${marksHtml(g.demand, prev)}</div>
+      ${demandCol(g.demand, prev, solid)}
     </div>
   </div>`;
 }
