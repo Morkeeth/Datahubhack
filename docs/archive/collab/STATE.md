@@ -19,7 +19,7 @@
 | Order-book twin section labels | ✅ | "Wanted vs built — same hollow marks, one scale" |
 | No Python / no Docker | ✅ | fixture preview `/tmp/judge-board-v3.png` |
 | `pytest nullspace/tests -q` | ✅ | **29 passed** |
-| Push to `main` | ⏳ | this turn |
+| Push to `main` | ✅ | `b534f53` on `origin/main` |
 
 ## Still open
 
