@@ -3,21 +3,23 @@
 > Every witness row names the **host** it was witnessed on and the command that
 > printed it. Night-run receipts from another host are not reused as truth here.
 
-- **Last updated:** 2026-08-23 ~08:10 UTC by Cursor (judge-legibility — demand column polish)
+- **Last updated:** 2026-08-28 ~09:01 UTC by Cursor (judge-legibility — column headers + order-book lede fix)
 - **Host:** Oscar laptop worktree `judge-legibility` — no docker/colima/launchctl
 - **Phase:** Judge-facing board legibility — **done on `main`**
-- **Worker branch:** `judge-legibility` (pushed to `origin/main`)
+- **Worker branch:** `judge-legibility` (pushing to `origin/main`)
 
 ## This turn
 
 | Slice | Status | Witness |
 |---|---|---|
-| Demand reads as agents, not counter | ✅ | removed 36px `.fig`; marks + `.demand-say` sentence lead |
-| Solid row shows what changed | ✅ | `.became` line + hollow→filled slot marks |
-| Board + order-book aligned | ✅ | same `demandCol` / `slotVal` pattern |
-| No Python / no Docker | ✅ | fixture preview `:8799`; Chrome `/tmp/judge-board-v2.png` |
+| Demand reads as agents, not counter | ✅ | marks + `.demand-say` sentence (prior turn) |
+| Solid row shows what changed | ✅ | `.became` + hollow→filled slot marks (prior turn) |
+| Demand column labelled | ✅ | `.rows-hdr` on board + order-book |
+| Order-book lede not clobbered | ✅ | removed JS overwrite of static ghost explainer |
+| Order-book twin section labels | ✅ | "Wanted vs built — same hollow marks, one scale" |
+| No Python / no Docker | ✅ | fixture preview `/tmp/judge-board-v3.png` |
 | `pytest nullspace/tests -q` | ✅ | **29 passed** |
-| Push to `main` | ✅ | `a96775e` on `origin/main` |
+| Push to `main` | ⏳ | this turn |
 
 ## Still open
 
@@ -27,4 +29,4 @@
 
 ## Handback
 
-Taste calls in agent reply (`.became` sentence length; slot inline marks).
+Taste calls in agent reply (`.rows-hdr` copy; twin cap line length).

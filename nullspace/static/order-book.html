@@ -59,6 +59,9 @@ h1 em{font-style:normal;color:var(--dim)}
 .comb.none{color:var(--dimmer);font-size:10px;letter-spacing:.2em;text-transform:uppercase;align-items:center}
 
 .rows{margin-top:8px}
+.rows-hdr{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,320px);gap:28px;
+  padding-bottom:10px;border-bottom:1px solid var(--rule)}
+.rows-hdr .lab:last-child{text-align:left}
 .row{border-top:1px solid var(--rule);padding:26px 0;display:grid;
   grid-template-columns:minmax(0,1fr) minmax(0,320px);gap:28px;align-items:start}
 .row h2{font-weight:400;font-size:19px;letter-spacing:-.02em;margin-bottom:8px}
@@ -112,7 +115,7 @@ h1 em{font-style:normal;color:var(--dim)}
 .q th{color:var(--dimmer);font-size:10px;letter-spacing:.2em;text-transform:uppercase}
 .limits{border-top:1px solid var(--rule);margin-top:70px;padding-top:22px;color:var(--dim);font-size:15px;max-width:64ch}
 .gone{border:1px solid var(--rule);padding:52px 40px;margin-top:30px;color:var(--dim)}
-@media(max-width:860px){.in{padding:0 24px}.row{grid-template-columns:1fr}.twin{grid-template-columns:1fr;gap:6px}.slot{grid-template-columns:76px 1fr}}
+@media(max-width:860px){.in{padding:0 24px}.rows-hdr,.row{grid-template-columns:1fr}.twin{grid-template-columns:1fr;gap:6px}.slot{grid-template-columns:76px 1fr}}
 @media(prefers-reduced-motion:reduce){
   .row .m.arrive,.row.filling .m,.row.filling .m.sm.on,.row.filling .slot-val{animation:none}
 }
@@ -146,13 +149,17 @@ h1 em{font-style:normal;color:var(--dim)}
   </section>
 
   <section class="g">
-    <span class="lab">The same book, read twice</span>
+    <span class="lab">Wanted vs built — same hollow marks, one scale</span>
     <div id="twins"></div>
-    <div class="cap"><span>WANTED, NOT BUILT</span><span class="mid">ONE SCALE</span><span>WANTED, AND BUILT</span></div>
+    <div class="cap"><span>HOLLOW = STILL MISSING</span><span class="mid">ONE MARK = ONE AGENT</span><span>FILLED = BUILT</span></div>
   </section>
 
   <section class="g">
-    <span class="lab">Unfilled — ranked by how many agents are waiting</span>
+    <span class="lab">Still missing — ranked by how many agents are waiting</span>
+    <div class="rows-hdr" aria-hidden="true">
+      <span class="lab">Catalog entry</span>
+      <span class="lab">Who asked · one hollow mark per agent</span>
+    </div>
     <div class="rows" id="rows"></div>
   </section>
 
@@ -285,8 +292,6 @@ async function refresh(){
     `Hollow = still missing. Filled = built. <b>${built.length}</b> exist. <b>${open.length}</b> are ghosts — and <b>${t.blocked_agents}</b> agents are waiting on them, without knowing about each other.`;
   document.getElementById('hero').innerHTML =
     `<b>${t.blocked_agents}</b> agents asked for something <em>that did not exist.</em>`;
-  document.getElementById('lede').textContent =
-    `${t.open_orders} ghosts still open. ${t.filled} filled in because the demand was visible. One hollow mark is one agent that asked.`;
 
   const scale = Math.max(t.unmet_requests, t.requests_unblocked, 1);
   const comb = (n, cls) => n
